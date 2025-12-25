@@ -1,91 +1,122 @@
 """
 Configuration Settings
 -----------------------------
-Centralized configuration for the chess application.
-Adjust these values to customize behavior.
+Centralized configuration module for the chess application.
+
+This module contains all configurable parameters for the chess GUI application,
+including display settings, gameplay options, animation parameters, and file paths.
 """
 
 import os
 
 
 class Config:
-    """Application configuration settings."""
+    """
+    Application configuration settings container.
+
+    This class serves as a centralized configuration store using class attributes.
+    The validate() method ensures configuration consistency and prevents runtime errors.
+    """
 
     # ===================
     # Window Settings
     # ===================
-    WINDOW_WIDTH = 980
-    WINDOW_HEIGHT = 840
+    WINDOW_WIDTH = 980  # Window width in pixels (must accommodate board + UI panels)
+    WINDOW_HEIGHT = 840  # Window height in pixels (must accommodate board + controls)
     WINDOW_TITLE = "Chess - Human vs Engine"
     FPS = 60
 
     # ===================
     # Board Settings
     # ===================
-    BOARD_SIZE = 640  # Board size in pixels (should be divisible by 8)
-    SHOW_COORDINATES = True  # Show file/rank labels (a-h, 1-8)
-    FLIP_BOARD = False  # True to play as black (board flipped)
+    BOARD_SIZE = (
+        640  # Board size in pixels (MUST be divisible by 8 for proper square sizing)
+    )
+    SHOW_COORDINATES = (
+        True  # Display algebraic notation labels (files: a-h, ranks: 1-8)
+    )
+    FLIP_BOARD = (
+        False  # Board orientation: False = white on bottom, True = black on bottom
+    )
 
     # ===================
     # UI Layout Settings
     # ===================
-    # Board position - LEFT aligned
-    BOARD_X = 40
-    BOARD_Y = 80
+    BOARD_X = 40  # X-coordinate (horizontal) offset from left edge of window in pixels
+    BOARD_Y = 80  # Y-coordinate (vertical) offset from top edge of window in pixels
 
     # ===================
     # Player Settings
     # ===================
-    HUMAN_COLOR = "white"  # "white" or "black"
-    ENGINE_COLOR = HUMAN_COLOR == "white" and "black" or "white"  # Opposite of human
+    HUMAN_COLOR = "white"  # Color for human player: "white" or "black"
+    # Engine color is automatically assigned as the opposite of human color
+    # This ensures proper turn-based gameplay without manual configuration
+    ENGINE_COLOR = HUMAN_COLOR == "white" and "black" or "white"
 
     # ===================
     # Animation Settings
     # ===================
-    ANIMATE_MOVES = True  # Enable move animations
-    ANIMATION_SPEED = 300  # Animation duration in milliseconds
-    SHOW_LAST_MOVE = True  # Highlight last move
+    ANIMATE_MOVES = True  # Enable smooth piece sliding animations during moves
+    ANIMATION_SPEED = 300  # Duration of move animation in milliseconds
+    SHOW_LAST_MOVE = (
+        True  # Highlight the source and destination squares of the last move played
+    )
 
     # ===================
     # Sound Settings
     # ===================
-    ENABLE_SOUNDS = True
-    SOUND_VOLUME = 0.5  # 0.0 to 1.0
+    ENABLE_SOUNDS = (
+        True  # Master toggle for all sound effects (move sounds, captures, etc.)
+    )
+    SOUND_VOLUME = 0.5  # Master volume level: 0.0 (muted) to 1.0 (maximum volume)
 
     # ===================
-    # Chapter 8: UI Features
+    # UI Features
     # ===================
-    SHOW_CAPTURED_PIECES = True  # Display captured pieces
-    SHOW_GAME_CLOCK = False  # Show game timer/clock
+    # Optional user interface components that can be toggled on/off
+
+    SHOW_CAPTURED_PIECES = True  # Display panel showing pieces captured by each player
+    SHOW_GAME_CLOCK = True  # Display game timer/clock for timed matches
+    SHOW_FPS = False  # Display current frames per second in the window
 
     # ===================
     # File Paths
     # ===================
-    ASSETS_DIR = "assets"
-    PIECE_IMAGES_DIR = os.path.join(ASSETS_DIR, "pieces")
-    SOUNDS_DIR = os.path.join(ASSETS_DIR, "sounds")
+    ASSETS_DIR = "assets"  # Root directory for all game assets
+    PIECE_IMAGES_DIR = os.path.join(ASSETS_DIR, "pieces")  # Chess piece images
+    SOUNDS_DIR = os.path.join(ASSETS_DIR, "sounds")  # Sound effect files
 
     # ===================
     # Debug Settings
     # ===================
-    DEBUG_MODE = False
-    SHOW_FPS = False
-    LOG_MOVES = True
+    DEBUG_MODE = False  # Enable verbose debug output and additional error information
+    LOG_MOVES = True  # Print move notation to console for debugging and game review
 
     @classmethod
     def validate(cls):
-        """Validate configuration settings."""
+        """
+        Validate all configuration settings for consistency and correctness.
+
+        Returns:
+            bool: True if all validations pass
+
+        Raises:
+            ValueError: If any configuration setting is invalid, with a detailed error message listing all validation failures
+        """
         errors = []
 
+        # Validate board size is divisible by 8
+        # Each square is BOARD_SIZE / 8 pixels; fractional squares would cause rendering issues
         if cls.BOARD_SIZE % 8 != 0:
             errors.append(f"BOARD_SIZE ({cls.BOARD_SIZE}) must be divisible by 8")
 
+        # Validate human color is a valid chess color
         if cls.HUMAN_COLOR not in ("white", "black"):
             errors.append(
                 f"HUMAN_COLOR must be 'white' or 'black', got '{cls.HUMAN_COLOR}'"
             )
 
-        # Validate window can fit board
+        # Validate window width can accommodate the board
         min_width = cls.BOARD_X + cls.BOARD_SIZE + 20
 
         if cls.WINDOW_WIDTH < min_width:
@@ -94,7 +125,7 @@ class Config:
                 f"Minimum {min_width} needed for board display"
             )
 
-        # Validate height fits board
+        # Validate window height can accommodate the board
         min_height = cls.BOARD_Y + cls.BOARD_SIZE + 100
         if cls.WINDOW_HEIGHT < min_height:
             errors.append(
@@ -102,6 +133,7 @@ class Config:
                 f"Minimum {min_height} needed for board display"
             )
 
+        # If any errors were found, raise an exception with all error messages
         if errors:
             raise ValueError("Configuration errors:\n" + "\n".join(errors))
 

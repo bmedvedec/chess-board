@@ -15,6 +15,7 @@ import chess
 
 from utils.config import Config
 from gui.colors import Colors
+from gui.board_state import BoardState
 
 
 def initialize_pygame():
@@ -97,15 +98,15 @@ def main():
     screen, clock = initialize_pygame()
     print("✅ Pygame initialized")
 
-    # Initialize chess board using python-chess library
+    # Initialize chess board using BoardState
     # Board starts in standard starting position
-    board = chess.Board()
-    print(f"✅ Chess board initialized")
-    print(f"    Starting FEN: {board.fen()}")
+    board = BoardState()
+    print(f"[✓] Chess board initialized")
+    print(f"    Starting FEN: {board.get_fen()}")
 
     # Display chess board statistics for verification
-    print(f"    Legal moves: {board.legal_moves.count()} available")
-    print(f"    Turn: {'White' if board.turn else 'Black'}")
+    print(f"    Legal moves: {board.count_legal_moves()} available")
+    print(f"    Turn: {board.get_turn_string()}")
 
     # Initialize the chess engine (AI opponent)
     # Currently a placeholder - will load trained model in future
@@ -114,6 +115,7 @@ def main():
     # Notify user that display test is running
     print("\n[Info] Running display test...")
     print("[Info] Close window or press ESC to exit\n")
+    print("[Info] Press 'R' to reset board, 'U' to undo move\n")
 
     # ==================== Main Game Loop ====================
     running = True
@@ -130,6 +132,19 @@ def main():
                 # ESC key exits the application
                 if event.key == pygame.K_ESCAPE:
                     running = False
+                # R key resets the board to starting position
+                elif event.key == pygame.K_r:
+                    board.reset()
+                    print("[Action] Board reset")
+                    print(f"    Status: {board.get_game_status()}")
+                # U key undoes the last move made
+                elif event.key == pygame.K_u:
+                    undone = board.undo_move()
+                    if undone:
+                        print(f"[Action] Undone move: {undone.uci()}")
+                    else:
+                        print("[Action] No moves to undo")
+                    print(f"    Status: {board.get_game_status()}")
 
         # -------------------- Rendering Phase --------------------
         # Clear the screen with background color
@@ -172,8 +187,13 @@ def main():
     # ==================== Cleanup Phase ====================
     # Properly shut down pygame and release resources
     pygame.quit()
-    print("=" * 50)
-    print("\n✅ Application closed cleanly")
+    print("\n" + "=" * 50)
+    print("Final Game State:")
+    print(f"    Moves played: {len(board.get_move_history_uci())}")
+    print(f"    Status: {board.get_game_status()}")
+    if board.get_move_history_san():
+        print(f"    Move history: {' '.join(board.get_move_history_san())}")
+    print("[✓] Application closed cleanly")
     print("=" * 50)
 
     return 0
