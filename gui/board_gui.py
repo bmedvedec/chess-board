@@ -435,7 +435,7 @@ class BoardGUI:
         # Blit the overlay onto the screen at the square position
         self.screen.blit(overlay, (x, y))
 
-    def draw_legal_move_indicators(self, legal_moves: list):
+    def draw_legal_move_indicators(self, legal_moves: list, board: chess.Board):
         """
         Draw visual indicators showing where a selected piece can move.
 
@@ -444,29 +444,43 @@ class BoardGUI:
 
         Args:
             legal_moves (list): List of chess.Move objects representing valid moves
+            board (chess.Board): Current board state for capture detection
         """
         for move in legal_moves:
             # Get destination square of this move
             to_square = move.to_square
             row, col = self._square_to_coords(to_square)
 
-            # Calculate center position of the destination square
-            x = self.board_x + col * self.square_size + self.square_size // 2
-            y = self.board_y + row * self.square_size + self.square_size // 2
+            # Check if this move is a capture
+            is_capture = board.piece_at(to_square) is not None or board.is_en_passant(
+                move
+            )
 
             # Create transparent surface for the indicator dot
-            radius = self.square_size // 8  # Small circle (12.5% of square size)
             surface = pygame.Surface(
                 (self.square_size, self.square_size), pygame.SRCALPHA
             )
+            center = (self.square_size // 2, self.square_size // 2)
 
-            # Draw semi-transparent circle centered on the surface
-            pygame.draw.circle(
-                surface,
-                Colors.LEGAL_MOVE_DOT,
-                (self.square_size // 2, self.square_size // 2),
-                radius,
-            )
+            if is_capture:
+                # Draw hollow circle for captures (larger, around the piece)
+                radius = int(self.square_size * 0.42)
+                pygame.draw.circle(
+                    surface,
+                    Colors.CAPTURE_MOVE_CIRCLE,
+                    center,
+                    radius,
+                    4,
+                )
+            else:
+                # Draw solid dot for non-captures
+                radius = self.square_size // 8
+                pygame.draw.circle(
+                    surface,
+                    Colors.LEGAL_MOVE_DOT,
+                    center,
+                    radius,
+                )
 
             # Blit the indicator onto the screen at the square position
             self.screen.blit(
@@ -476,6 +490,41 @@ class BoardGUI:
                     self.board_y + row * self.square_size,
                 ),
             )
+
+    def draw_check_indicator(self, board: chess.Board):
+        """
+        Draw a red highlight around the king if in check.
+
+        Args:
+            board: Current board state
+        """
+        if not board.is_check():
+            return
+
+        # Find the king of the current player (who is in check)
+        king_square = board.king(board.turn)
+        if king_square is None:
+            return
+
+        row, col = self._square_to_coords(king_square)
+        x = self.board_x + col * self.square_size
+        y = self.board_y + row * self.square_size
+
+        # Draw pulsing red glow effect
+        surface = pygame.Surface((self.square_size, self.square_size), pygame.SRCALPHA)
+
+        # Draw multiple layers for glow effect
+        for i in range(3):
+            alpha = 180 - (i * 40)
+            color = (235, 97, 80, alpha)
+            pygame.draw.rect(
+                surface,
+                color,
+                (i * 2, i * 2, self.square_size - i * 4, self.square_size - i * 4),
+                3,
+            )
+
+        self.screen.blit(surface, (x, y))
 
     def draw_game_info(self, board: chess.Board):
         """

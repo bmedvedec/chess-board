@@ -14,6 +14,7 @@ import pygame
 import chess
 
 from gui.board_gui import BoardGUI
+from gui.input_handler import InputHandler
 from utils.config import Config
 from gui.colors import Colors
 from gui.board_state import BoardState
@@ -102,7 +103,7 @@ def main():
     # Initialize chess board using BoardState
     # Board starts in standard starting position
     board_state = BoardState()
-    print(f"[✓] Chess board initialized")
+    print(f"✅ Chess board initialized")
     print(f"    Starting FEN: {board_state.get_fen()}")
 
     # Display chess board statistics for verification
@@ -111,7 +112,11 @@ def main():
 
     # Initialize board GUI renderer
     board_gui = BoardGUI(screen)
-    print("[✓] Board GUI renderer initialized")
+    print("✅ Board GUI renderer initialized")
+
+    # Initialize input handler
+    input_handler = InputHandler(board_gui, board_state)
+    print("✅ Input handler initialized")
 
     # Initialize the chess engine (AI opponent)
     # Currently a placeholder - will load trained model in future
@@ -155,6 +160,24 @@ def main():
                         print("[Action] No moves to undo")
                     print(f"    Status: {board_state.get_game_status()}")
 
+            # Mouse events - Support BOTH drag-and-drop AND click-to-move
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                if event.button == 1:  # Left click
+                    # Start potential drag (also selects piece)
+                    input_handler.handle_mouse_down(event.pos)
+
+            elif event.type == pygame.MOUSEBUTTONUP:
+                if event.button == 1:  # Left click release
+                    # Try to complete drag move
+                    move_made = input_handler.handle_mouse_up(event.pos)
+                    # If no drag move was made, handle as click-to-move
+                    if not move_made:
+                        input_handler.handle_mouse_click(event.pos)
+
+            elif event.type == pygame.MOUSEMOTION:
+                # Track mouse position during drag
+                input_handler.handle_mouse_motion(event.pos)
+
         # -------------------- Rendering Phase --------------------
         # Draw board with squares and coordinates
         board_gui.draw_board()
@@ -164,6 +187,21 @@ def main():
 
         # Draw all pieces
         board_gui.draw_pieces(board_state.board)
+
+        # Draw all pieces (hide the one being dragged)
+        if input_handler.dragging and input_handler.drag_start_square is not None:
+            # Temporarily remove dragged piece from board for rendering
+            dragged_piece = board_state.board.piece_at(input_handler.drag_start_square)
+            board_state.board.remove_piece_at(input_handler.drag_start_square)
+            board_gui.draw_pieces(board_state.board)
+            board_state.board.set_piece_at(
+                input_handler.drag_start_square, dragged_piece
+            )
+        else:
+            board_gui.draw_pieces(board_state.board)
+
+        # Draw dragged piece on top (follows cursor)
+        input_handler.render_dragged_piece()
 
         # Show FPS if enabled
         if Config.SHOW_FPS:
