@@ -54,6 +54,13 @@ class Config:
     ENGINE_COLOR = HUMAN_COLOR == "white" and "black" or "white"
 
     # ===================
+    # Engine Settings
+    # ===================
+    ENGINE_TIME_LIMIT = 5.0  # Time limit per move in seconds
+    MCTS_ITERATIONS = 1000  # Number of MCTS simulations per move
+    TEMPERATURE = 1.0  # Exploration parameter for move selection
+
+    # ===================
     # Animation Settings
     # ===================
     ANIMATE_MOVES = True  # Enable smooth piece sliding animations during moves
