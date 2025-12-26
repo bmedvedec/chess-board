@@ -13,6 +13,7 @@ import sys
 import pygame
 import chess
 
+from gui.board_gui import BoardGUI
 from utils.config import Config
 from gui.colors import Colors
 from gui.board_state import BoardState
@@ -100,13 +101,17 @@ def main():
 
     # Initialize chess board using BoardState
     # Board starts in standard starting position
-    board = BoardState()
+    board_state = BoardState()
     print(f"[✓] Chess board initialized")
-    print(f"    Starting FEN: {board.get_fen()}")
+    print(f"    Starting FEN: {board_state.get_fen()}")
 
     # Display chess board statistics for verification
-    print(f"    Legal moves: {board.count_legal_moves()} available")
-    print(f"    Turn: {board.get_turn_string()}")
+    print(f"    Legal moves: {board_state.count_legal_moves()} available")
+    print(f"    Turn: {board_state.get_turn_string()}")
+
+    # Initialize board GUI renderer
+    board_gui = BoardGUI(screen)
+    print("[✓] Board GUI renderer initialized")
 
     # Initialize the chess engine (AI opponent)
     # Currently a placeholder - will load trained model in future
@@ -116,6 +121,10 @@ def main():
     print("\n[Info] Running display test...")
     print("[Info] Close window or press ESC to exit\n")
     print("[Info] Press 'R' to reset board, 'U' to undo move\n")
+    if Config.SHOW_FPS:
+        print("[Info] FPS counter enabled\n")
+    else:
+        print()
 
     # ==================== Main Game Loop ====================
     running = True
@@ -134,46 +143,34 @@ def main():
                     running = False
                 # R key resets the board to starting position
                 elif event.key == pygame.K_r:
-                    board.reset()
+                    board_state.reset()
                     print("[Action] Board reset")
-                    print(f"    Status: {board.get_game_status()}")
+                    print(f"    Status: {board_state.get_game_status()}")
                 # U key undoes the last move made
                 elif event.key == pygame.K_u:
-                    undone = board.undo_move()
+                    undone = board_state.undo_move()
                     if undone:
                         print(f"[Action] Undone move: {undone.uci()}")
                     else:
                         print("[Action] No moves to undo")
-                    print(f"    Status: {board.get_game_status()}")
+                    print(f"    Status: {board_state.get_game_status()}")
 
         # -------------------- Rendering Phase --------------------
-        # Clear the screen with background color
-        screen.fill(Colors.BACKGROUND)
+        # Draw board with squares and coordinates
+        board_gui.draw_board()
 
-        # Calculate centered position for the chess board
-        # Board is centered both horizontally and vertically in the window
-        board_rect = pygame.Rect(
-            (Config.WINDOW_WIDTH - Config.BOARD_SIZE) // 2,
-            (Config.WINDOW_HEIGHT - Config.BOARD_SIZE) // 2,
-            Config.BOARD_SIZE,
-            Config.BOARD_SIZE,
-        )
+        # Draw game info (turn indicator)
+        board_gui.draw_game_info(board_state.board)
 
-        # Draw the checkerboard pattern (8x8 grid)
-        square_size = Config.BOARD_SIZE // 8
-        for row in range(8):
-            for col in range(8):
-                # Calculate pixel position for this square
-                x = board_rect.x + col * square_size
-                y = board_rect.y + row * square_size
+        # Draw all pieces
+        board_gui.draw_pieces(board_state.board)
 
-                # Determine square color using checkerboard pattern
-                # Light squares occur when row + col is even
-                is_light = (row + col) % 2 == 0
-                color = Colors.LIGHT_SQUARE if is_light else Colors.DARK_SQUARE
-
-                # Draw the square at the calculated position
-                pygame.draw.rect(screen, color, (x, y, square_size, square_size))
+        # Show FPS if enabled
+        if Config.SHOW_FPS:
+            fps = clock.get_fps()
+            font = pygame.font.SysFont("Arial", 18)
+            fps_text = font.render(f"FPS: {fps:.1f}", True, (255, 255, 255))
+            screen.blit(fps_text, (10, 10))
 
         # Update the display with all rendered graphics
         # flip() updates the entire display surface
@@ -186,16 +183,16 @@ def main():
 
     # ==================== Cleanup Phase ====================
     # Properly shut down pygame and release resources
-    pygame.quit()
     print("\n" + "=" * 50)
     print("Final Game State:")
-    print(f"    Moves played: {len(board.get_move_history_uci())}")
-    print(f"    Status: {board.get_game_status()}")
-    if board.get_move_history_san():
-        print(f"    Move history: {' '.join(board.get_move_history_san())}")
+    print(f"    Moves played: {len(board_state.get_move_history_uci())}")
+    print(f"    Status: {board_state.get_game_status()}")
+    if board_state.get_move_history_san():
+        print(f"    Move history: {' '.join(board_state.get_move_history_san())}")
     print("[✓] Application closed cleanly")
     print("=" * 50)
 
+    pygame.quit()
     return 0
 
 
