@@ -14,6 +14,7 @@ from typing import Optional, Tuple, List
 from gui.board_gui import BoardGUI
 from gui.board_state import BoardState
 from gui.colors import Colors
+from gui.promotion_dialog import PromotionDialog
 
 
 class InputHandler:
@@ -36,6 +37,11 @@ class InputHandler:
         # Store references to GUI and game state
         self.board_gui = board_gui
         self.board_state = board_state
+
+        # Initialize promotion dialog
+        self.promotion_dialog = PromotionDialog(
+            board_gui.screen, board_gui.piece_images
+        )
 
         # Selection state (click-to-move mode)
         # These track which piece the player has selected via clicking
@@ -188,10 +194,30 @@ class InputHandler:
 
         # Handle pawn promotion special case
         if self._is_promotion_move(move):
-            # Always promote to queen for now (best choice in most cases)
-            # TODO: Show promotion dialog to let player choose piece
-            move = chess.Move(self.selected_square, to_square, promotion=chess.QUEEN)
-            print("[Input] Auto-promoting to Queen (dialog coming in Chapter 5)")
+            # Show promotion dialog
+            piece = self.board_state.board.piece_at(self.selected_square)
+            is_white = piece.color == chess.WHITE if piece else True
+
+            print("[Input] Pawn promotion detected - showing dialog")
+            promotion_piece = self.promotion_dialog.show(is_white)
+
+            if promotion_piece is None:
+                # Dialog was cancelled (window closed)
+                print("[Input] Promotion cancelled")
+                self._deselect()
+                return False
+
+            # Create move with chosen promotion piece
+            move = chess.Move(
+                self.selected_square, to_square, promotion=promotion_piece
+            )
+            promotion_names = {
+                chess.QUEEN: "Queen",
+                chess.ROOK: "Rook",
+                chess.BISHOP: "Bishop",
+                chess.KNIGHT: "Knight",
+            }
+            print(f"[Input] Promoting to {promotion_names[promotion_piece]}")
 
         # Validate move legality
         if move not in self.board_state.board.legal_moves:
