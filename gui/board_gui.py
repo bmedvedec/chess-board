@@ -45,10 +45,15 @@ class BoardGUI:
         # Calculate individual square size (board divided into 8x8 grid)
         self.square_size = Config.BOARD_SIZE // 8
 
-        # Calculate board position to center it in the window
-        # This creates even margins on all sides
-        self.board_x = (Config.WINDOW_WIDTH - Config.BOARD_SIZE) // 2
-        self.board_y = (Config.WINDOW_HEIGHT - Config.BOARD_SIZE) // 2
+        # Determine board position on screen
+        if hasattr(Config, "BOARD_X") and hasattr(Config, "BOARD_Y"):
+            # Use explicit positions from config
+            self.board_x = Config.BOARD_X
+            self.board_y = Config.BOARD_Y
+        else:
+            # Fallback: center the board (backward compatibility)
+            self.board_x = (Config.WINDOW_WIDTH - Config.BOARD_SIZE) // 2
+            self.board_y = (Config.WINDOW_HEIGHT - Config.BOARD_SIZE) // 2
 
         # Load and cache all piece sprite images
         # Images are loaded once during initialization for performance

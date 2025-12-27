@@ -18,6 +18,14 @@ from gui.input_handler import InputHandler
 from utils.config import Config
 from gui.colors import Colors
 from gui.board_state import BoardState
+from gui.game_result_dialog import GameResultDialog
+from gui.move_history_panel import MoveHistoryPanel
+from gui.game_controls import (
+    GameControls,
+    SimplePGNDialog,
+    save_pgn_to_file,
+    load_pgn_from_file,
+)
 
 from engine.engine_wrapper import (
     initialize_engine as init_engine_wrapper,
@@ -84,6 +92,43 @@ def initialize_engine(engine_path=None):
     return controller
 
 
+def check_game_end_conditions(board_state: BoardState) -> tuple:
+    """
+    Check for game end conditions and return result.
+
+    Args:
+        board_state: BoardState instance
+
+    Returns:
+        Tuple of (is_game_over, result_type, winner, reason)
+    """
+    board = board_state.board
+
+    # Checkmate
+    if board.is_checkmate():
+        winner = "White" if board.turn == chess.BLACK else "Black"
+        return (True, "checkmate", winner, "")
+
+    # Stalemate
+    if board.is_stalemate():
+        return (True, "stalemate", None, "")
+
+    # Insufficient material
+    if board.is_insufficient_material():
+        return (True, "draw", None, "insufficient material")
+
+    # Fifty-move rule
+    if board.can_claim_fifty_moves():
+        return (True, "draw", None, "50-move rule")
+
+    # Threefold repetition
+    if board.can_claim_threefold_repetition():
+        return (True, "draw", None, "threefold repetition")
+
+    # Game continues
+    return (False, None, None, None)
+
+
 def check_engine_turn_and_move(board_state, engine_controller, move_history):
     """
     Check if it's engine's turn and request move if needed.
@@ -120,59 +165,6 @@ def check_engine_turn_and_move(board_state, engine_controller, move_history):
             return True
 
     return False
-
-
-def apply_engine_move(board_state, engine_controller, move_history, input_handler):
-    """
-    Check if engine has finished thinking and apply move if ready.
-
-    Args:
-        board_state: BoardState instance
-        engine_controller: EngineController instance
-        move_history: List of moves in UCI notation
-        input_handler: InputHandler instance
-
-    Returns:
-        True if move was applied, False if still thinking or error
-    """
-    # Check if engine has a move ready
-    move_uci = engine_controller.get_move_if_ready()
-
-    if move_uci is None:
-        return False  # Still thinking
-
-    if move_uci == "":
-        print("[Engine] ❌ Engine returned empty move")
-        return True  # Error, but stop thinking
-
-    try:
-        # Parse and validate move
-        move = chess.Move.from_uci(move_uci)
-
-        if move not in board_state.board.legal_moves:
-            print(f"[Engine] ❌ Illegal move returned: {move_uci}")
-            return True  # Error, but stop thinking
-
-        # Apply move
-        move_san = board_state.board.san(move)
-        success = board_state.make_move(move)
-
-        if success:
-            move_history.append(move_uci)
-            print(f"[Engine] Move made: {move_san} ({move_uci})")
-            print(f"         Status: {board_state.get_game_status()}")
-
-            # Clear any selection after engine move
-            input_handler.reset()
-
-            return True
-        else:
-            print(f"[Engine] ❌ Failed to apply move: {move_uci}")
-            return True  # Error, but stop thinking
-
-    except Exception as e:
-        print(f"[Engine] ❌ Error applying move: {e}")
-        return True  # Error, but stop thinking
 
 
 def main():
@@ -221,12 +213,33 @@ def main():
     input_handler = InputHandler(board_gui, board_state)
     print("✅ Input handler initialized")
 
+    result_dialog = GameResultDialog(screen)
+    move_panel = MoveHistoryPanel(
+        screen,
+        x=Config.MOVE_HISTORY_X,
+        y=Config.MOVE_HISTORY_Y,
+        width=Config.MOVE_HISTORY_WIDTH,
+        height=Config.MOVE_HISTORY_HEIGHT,
+    )
+    game_controls = GameControls(
+        screen,
+        x=Config.GAME_CONTROLS_X,
+        y=Config.GAME_CONTROLS_Y,
+        width=Config.GAME_CONTROLS_WIDTH,
+    )
+    pgn_dialog = SimplePGNDialog(screen)
+    print("✅ Game state management components initialized")
+
     # Initialize the chess engine (AI opponent)
     engine_controller = initialize_engine()  # Uses path from engine_wrapper.py
     print("✅ Engine controller initialized")
 
     # Track move history for engine
     move_history = []
+
+    # Game state flags
+    game_ended = False
+    last_result = None
 
     # Determine player color
     print(f"\n[Info] You are playing as: {Config.HUMAN_COLOR.upper()}")
@@ -240,11 +253,14 @@ def main():
     # Notify user that display test is running
     print("\n[Info] Running display test...")
     print("[Info] Close window or press ESC to exit\n")
-    print("[Info] Press 'R' to reset board, 'U' to undo move\n")
-    if Config.SHOW_FPS:
-        print("[Info] FPS counter enabled\n")
-    else:
-        print()
+    print("\n[Controls]")
+    print("  R - Reset board")
+    print("  U - Undo last move")
+    print("  S - Save game (PGN)")
+    print("  L - Load game (PGN)")
+    print("  Mouse - Select and move pieces")
+    print("  Right panel - Move history, game controls")
+    print()
 
     # ==================== Main Game Loop ====================
     running = True
@@ -267,6 +283,9 @@ def main():
                     input_handler.reset()
                     move_history.clear()
                     engine_controller.cancel_thinking()
+                    game_ended = False
+                    last_result = None
+                    move_panel.scroll_to_top()
                     print("[Action] Board reset")
                     print(f"    Status: {board_state.get_game_status()}")
                     # Check if engine should move first
@@ -276,7 +295,7 @@ def main():
 
                 # U key undoes last move (or two moves if playing vs engine)
                 elif event.key == pygame.K_u:
-                    if not engine_controller.is_thinking():
+                    if not engine_controller.is_thinking() and not game_ended:
                         # Undo player's last move (and engine's move if present)
                         moves_to_undo = (
                             2 if len(board_state.board.move_stack) >= 2 else 1
@@ -295,28 +314,141 @@ def main():
                                 f"[Action] Undone {len(undone_moves)} move(s): {', '.join(undone_moves)}"
                             )
                             input_handler.reset()
+                            game_ended = False
+                            last_result = None
                         else:
                             print("[Action] No moves to undo")
                         print(f"    Status: {board_state.get_game_status()}")
                     else:
                         print("[Action] Cannot undo while engine is thinking")
 
+                elif event.key == pygame.K_s:
+                    # Save game shortcut
+                    if len(board_state.board.move_stack) > 0:
+                        filename = pgn_dialog.show_save_dialog()
+                        if filename:
+                            pgn_string = board_state.to_pgn()
+                            if save_pgn_to_file(pgn_string, filename):
+                                print(f"[Action] ✅ Game saved to: {filename}")
+                            else:
+                                print(f"[Action] ❌ Failed to save game")
+
+                elif event.key == pygame.K_l:
+                    # Load game shortcut
+                    filename = pgn_dialog.show_load_dialog()
+                    if filename:
+                        pgn_string = load_pgn_from_file(filename)
+                        if pgn_string:
+                            try:
+                                # Cancel any engine thinking
+                                engine_controller.cancel_thinking()
+
+                                # Load the game
+                                board_state = BoardState.from_pgn(pgn_string)
+                                input_handler.board_state = board_state
+                                input_handler.reset()
+                                move_history = board_state.get_move_history_uci()
+                                game_ended = False
+                                last_result = None
+                                move_panel.scroll_to_bottom()
+
+                                print(f"[Action] ✅ Game loaded from: {filename}")
+                                print(f"    Moves: {len(move_history)}")
+                                print(f"    Status: {board_state.get_game_status()}")
+
+                                # Check if engine should move
+                                engine_thinking = check_engine_turn_and_move(
+                                    board_state, engine_controller, move_history
+                                )
+
+                            except Exception as e:
+                                print(f"[Action] ❌ Failed to load game: {e}")
+
+            # Mouse wheel for move history scrolling
+            elif event.type == pygame.MOUSEWHEEL:
+                mouse_pos = pygame.mouse.get_pos()
+                if move_panel.is_mouse_over(mouse_pos):
+                    move_panel.handle_mouse_wheel(event.y)
+
             # Mouse events - Support BOTH drag-and-drop AND click-to-move
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:  # Left click
-                    # Only handle input on human's turn
-                    # Start potential drag (also selects piece)
-                    human_color = (
-                        chess.WHITE if Config.HUMAN_COLOR == "white" else chess.BLACK
-                    )
-                    if (
-                        board_state.board.turn == human_color
-                        and not engine_controller.is_thinking()
-                    ):
-                        input_handler.handle_mouse_down(event.pos)
+                    # Check for game controls clicks
+                    button_id = game_controls.handle_click(event.pos)
+                    if button_id:
+                        if button_id == "save_pgn":
+                            if len(board_state.board.move_stack) > 0:
+                                filename = pgn_dialog.show_save_dialog()
+                                if filename:
+                                    pgn_string = board_state.to_pgn()
+                                    if save_pgn_to_file(pgn_string, filename):
+                                        print(f"[Action] ✅ Game saved to: {filename}")
+
+                        elif button_id == "load_pgn":
+                            filename = pgn_dialog.show_load_dialog()
+                            if filename:
+                                pgn_string = load_pgn_from_file(filename)
+                                if pgn_string:
+                                    try:
+                                        engine_controller.cancel_thinking()
+                                        board_state = BoardState.from_pgn(pgn_string)
+                                        input_handler.board_state = board_state
+                                        input_handler.reset()
+                                        move_history = (
+                                            board_state.get_move_history_uci()
+                                        )
+                                        game_ended = False
+                                        last_result = None
+                                        move_panel.scroll_to_bottom()
+                                        print(f"[Action] ✅ Game loaded: {filename}")
+                                        engine_thinking = check_engine_turn_and_move(
+                                            board_state, engine_controller, move_history
+                                        )
+                                    except Exception as e:
+                                        print(f"[Action] ❌ Failed to load: {e}")
+
+                        elif button_id == "resign":
+                            if not game_ended:
+                                # Current player resigns
+                                winner = (
+                                    "Black"
+                                    if board_state.board.turn == chess.WHITE
+                                    else "White"
+                                )
+                                print(
+                                    f"[Action] {board_state.get_turn_string()} resigns!"
+                                )
+                                game_ended = True
+                                last_result = ("resignation", winner, "")
+                                # Show result dialog
+                                choice = result_dialog.show("resignation", winner, "")
+                                if choice == "new_game":
+                                    board_state.reset()
+                                    input_handler.reset()
+                                    move_history.clear()
+                                    engine_controller.cancel_thinking()
+                                    game_ended = False
+                                    last_result = None
+                                    move_panel.scroll_to_top()
+                                    engine_thinking = check_engine_turn_and_move(
+                                        board_state, engine_controller, move_history
+                                    )
+
+                    # Only handle chess input on human's turn and if game not over
+                    if not game_ended:
+                        human_color = (
+                            chess.WHITE
+                            if Config.HUMAN_COLOR == "white"
+                            else chess.BLACK
+                        )
+                        if (
+                            board_state.board.turn == human_color
+                            and not engine_controller.is_thinking()
+                        ):
+                            input_handler.handle_mouse_down(event.pos)
 
             elif event.type == pygame.MOUSEBUTTONUP:
-                if event.button == 1:  # Left click release
+                if event.button == 1 and not game_ended:  # Left click release
                     human_color = (
                         chess.WHITE if Config.HUMAN_COLOR == "white" else chess.BLACK
                     )
@@ -338,12 +470,39 @@ def main():
                                 last_move = board_state.board.peek()
                                 move_history.append(last_move.uci())
 
-                            # Check if engine should move now
-                            engine_thinking = check_engine_turn_and_move(
-                                board_state, engine_controller, move_history
+                            # Check for game end
+                            is_over, result_type, winner, reason = (
+                                check_game_end_conditions(board_state)
                             )
+                            if is_over:
+                                game_ended = True
+                                last_result = (result_type, winner, reason)
+                                print(f"[Game] Game over: {result_type}")
+                                if winner:
+                                    print(f"       Winner: {winner}")
+                                if reason:
+                                    print(f"       Reason: {reason}")
 
-            elif event.type == pygame.MOUSEMOTION:
+                                # Show result dialog
+                                choice = result_dialog.show(result_type, winner, reason)
+                                if choice == "new_game":
+                                    board_state.reset()
+                                    input_handler.reset()
+                                    move_history.clear()
+                                    engine_controller.cancel_thinking()
+                                    game_ended = False
+                                    last_result = None
+                                    move_panel.scroll_to_top()
+                                    engine_thinking = check_engine_turn_and_move(
+                                        board_state, engine_controller, move_history
+                                    )
+                            else:
+                                # Check if engine should move now
+                                engine_thinking = check_engine_turn_and_move(
+                                    board_state, engine_controller, move_history
+                                )
+
+            elif event.type == pygame.MOUSEMOTION and not game_ended:
                 # Track mouse position during drag, but only on human's turn
                 human_color = (
                     chess.WHITE if Config.HUMAN_COLOR == "white" else chess.BLACK
@@ -356,34 +515,67 @@ def main():
 
         # -------------------- Engine Move Processing --------------------
 
-        # Check if engine has a move ready
-        move_uci = engine_controller.get_move_if_ready()
+        if not game_ended:
+            # Check if engine has a move ready
+            move_uci = engine_controller.get_move_if_ready()
 
-        if move_uci is not None:  # Engine has returned a move
-            try:
-                # Parse, validate, and apply the move
-                move = chess.Move.from_uci(move_uci)
+            if move_uci is not None:  # Engine has returned a move
+                try:
+                    # Parse, validate, and apply the move
+                    move = chess.Move.from_uci(move_uci)
 
-                # Check if move is legal
-                if move in board_state.board.legal_moves:
-                    move_san = board_state.board.san(move)
-                    success = board_state.make_move(move)
+                    # Check if move is legal
+                    if move in board_state.board.legal_moves:
+                        move_san = board_state.board.san(move)
+                        success = board_state.make_move(move)
 
-                    # If move applied successfully, update history and reset input
-                    if success:
-                        move_history.append(move_uci)
-                        print(f"[Engine] Move made: {move_san} ({move_uci})")
-                        print(f"         Status: {board_state.get_game_status()}")
-                        input_handler.reset()
+                        # If move applied successfully, update history and reset input
+                        if success:
+                            move_history.append(move_uci)
+                            move_panel.scroll_to_bottom()
+                            print(f"[Engine] Move made: {move_san} ({move_uci})")
+                            print(f"         Status: {board_state.get_game_status()}")
+                            input_handler.reset()
+
+                            # Check for game end
+                            is_over, result_type, winner, reason = (
+                                check_game_end_conditions(board_state)
+                            )
+                            if is_over:
+                                game_ended = True
+                                last_result = (result_type, winner, reason)
+                                print(f"[Game] Game over: {result_type}")
+                                if winner:
+                                    print(f"       Winner: {winner}")
+                                if reason:
+                                    print(f"       Reason: {reason}")
+
+                                # Show result dialog
+                                choice = result_dialog.show(result_type, winner, reason)
+                                if choice == "new_game":
+                                    board_state.reset()
+                                    input_handler.reset()
+                                    move_history.clear()
+                                    engine_controller.cancel_thinking()
+                                    game_ended = False
+                                    last_result = None
+                                    move_panel.scroll_to_top()
+                                    engine_thinking = check_engine_turn_and_move(
+                                        board_state, engine_controller, move_history
+                                    )
+                        else:
+                            print(f"[Engine] ❌ Failed to apply move: {move_uci}")
                     else:
-                        print(f"[Engine] ❌ Failed to apply move: {move_uci}")
-                else:
-                    print(f"[Engine] ❌ Illegal move returned: {move_uci}")
+                        print(f"[Engine] ❌ Illegal move returned: {move_uci}")
 
-            except Exception as e:
-                print(f"[Engine] ❌ Error applying move: {e}")
+                except Exception as e:
+                    print(f"[Engine] ❌ Error applying move: {e}")
 
         # -------------------- Rendering Phase --------------------
+
+        # Clear screen
+        screen.fill(Colors.BACKGROUND)
+
         # Draw board with squares and coordinates
         board_gui.draw_board()
 
@@ -391,18 +583,16 @@ def main():
         board_gui.draw_check_indicator(board_state.board)
 
         # Draw selection highlights and legal move indicators (only on human's turn)
-        human_color = chess.WHITE if Config.HUMAN_COLOR == "white" else chess.BLACK
-        if (
-            board_state.board.turn == human_color
-            and not engine_controller.is_thinking()
-        ):
-            input_handler.render_selection_highlights()
+        if not game_ended:
+            human_color = chess.WHITE if Config.HUMAN_COLOR == "white" else chess.BLACK
+            if (
+                board_state.board.turn == human_color
+                and not engine_controller.is_thinking()
+            ):
+                input_handler.render_selection_highlights()
 
         # Draw game info (turn indicator)
         board_gui.draw_game_info(board_state.board)
-
-        # Draw all pieces
-        board_gui.draw_pieces(board_state.board)
 
         # Draw "thinking" indicator if engine is calculating
         if engine_controller.is_thinking():
@@ -428,11 +618,19 @@ def main():
             board_gui.draw_pieces(board_state.board)
 
         # Draw dragged piece on top (follows cursor) - only on human's turn
-        if (
-            board_state.board.turn == human_color
-            and not engine_controller.is_thinking()
-        ):
-            input_handler.render_dragged_piece()
+        if not game_ended:
+            human_color = chess.WHITE if Config.HUMAN_COLOR == "white" else chess.BLACK
+            if (
+                board_state.board.turn == human_color
+                and not engine_controller.is_thinking()
+            ):
+                input_handler.render_dragged_piece()
+
+        # Draw move history panel
+        move_panel.draw(board_state.get_move_history_san())
+
+        # Draw game controls
+        game_controls.draw()
 
         # Show FPS if enabled
         if Config.SHOW_FPS:
@@ -467,7 +665,7 @@ def main():
     print(f"    Status: {board_state.get_game_status()}")
     if board_state.get_move_history_san():
         print(f"    Move history: {' '.join(board_state.get_move_history_san())}")
-    print("[✅] Application closed cleanly")
+    print("✅ Application closed cleanly")
     print("=" * 50)
 
     pygame.quit()

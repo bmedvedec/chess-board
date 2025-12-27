@@ -45,6 +45,21 @@ class Config:
     BOARD_X = 40  # X-coordinate (horizontal) offset from left edge of window in pixels
     BOARD_Y = 80  # Y-coordinate (vertical) offset from top edge of window in pixels
 
+    # Side panel configuration
+    SIDE_PANEL_WIDTH = 240
+    SIDE_PANEL_MARGIN = 40
+
+    # Move history panel - positioned to the right of the board
+    MOVE_HISTORY_X = BOARD_X + BOARD_SIZE + SIDE_PANEL_MARGIN
+    MOVE_HISTORY_Y = BOARD_Y
+    MOVE_HISTORY_WIDTH = SIDE_PANEL_WIDTH
+    MOVE_HISTORY_HEIGHT = 500
+
+    # Game controls panel - below move history
+    GAME_CONTROLS_X = MOVE_HISTORY_X
+    GAME_CONTROLS_Y = MOVE_HISTORY_Y + MOVE_HISTORY_HEIGHT + 20
+    GAME_CONTROLS_WIDTH = SIDE_PANEL_WIDTH
+
     # ===================
     # Player Settings
     # ===================
@@ -139,6 +154,16 @@ class Config:
                 f"WINDOW_HEIGHT ({cls.WINDOW_HEIGHT}) too small. "
                 f"Minimum {min_height} needed for board display"
             )
+
+        # Validate panels don't go off screen
+        if hasattr(cls, "MOVE_HISTORY_X") and hasattr(cls, "MOVE_HISTORY_WIDTH"):
+            panel_right_edge = cls.MOVE_HISTORY_X + cls.MOVE_HISTORY_WIDTH
+            if panel_right_edge > cls.WINDOW_WIDTH:
+                errors.append(
+                    f"Move history panel extends beyond window edge. "
+                    f"Panel ends at {panel_right_edge}px but window is {cls.WINDOW_WIDTH}px wide. "
+                    f"Increase WINDOW_WIDTH to at least {panel_right_edge + 20}px"
+                )
 
         # If any errors were found, raise an exception with all error messages
         if errors:
