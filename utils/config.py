@@ -57,7 +57,7 @@ class Config:
 
     # Game controls panel - below move history
     GAME_CONTROLS_X = MOVE_HISTORY_X
-    GAME_CONTROLS_Y = MOVE_HISTORY_Y + MOVE_HISTORY_HEIGHT + 20
+    GAME_CONTROLS_Y = MOVE_HISTORY_Y + MOVE_HISTORY_HEIGHT + 10
     GAME_CONTROLS_WIDTH = SIDE_PANEL_WIDTH
 
     # Captured pieces display - below game controls

@@ -13,7 +13,7 @@ import chess
 from typing import Optional, Tuple
 from pathlib import Path
 
-from gui.colors import Colors, PIECE_COLORS, PIECE_TYPES
+from gui.colors import Colors
 from utils.config import Config
 from gui.piece_loader import PieceLoader
 
@@ -452,7 +452,7 @@ class BoardGUI:
 
         # Center text over the board (not the window)
         board_center_x = self.board_x + self.square_size * 4  # Center of 8 squares
-        text_rect = text_surface.get_rect(centerx=board_center_x, y=self.board_y - 40)
+        text_rect = text_surface.get_rect(centerx=board_center_x, y=self.board_y - 60)
 
         # Draw the text to the screen
         self.screen.blit(text_surface, text_rect)

@@ -558,10 +558,12 @@ class BoardState:
         pgn = StringIO(pgn_string)
         game = chess.pgn.read_game(pgn)
 
+        if game is None:
+            raise ValueError("Invalid PGN string provided.")
+
         state = cls()
-        if game is not None:
-            for move in game.mainline_moves():
-                state.make_move(move)
+        for move in game.mainline_moves():
+            state.make_move(move)
 
         return state
 
