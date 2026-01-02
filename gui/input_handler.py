@@ -40,7 +40,7 @@ class InputHandler:
 
         # Initialize promotion dialog
         self.promotion_dialog = PromotionDialog(
-            board_gui.screen, board_gui.piece_images
+            board_gui.screen, board_gui.piece_loader
         )
 
         # Selection state (click-to-move mode)
@@ -434,16 +434,16 @@ class InputHandler:
         piece appear to "follow" the mouse.
         """
         if self.dragging and self.drag_piece is not None and self.drag_pos is not None:
-            # Look up the piece image for this piece
-            symbol = self.drag_piece.symbol()
-            if symbol in self.board_gui.piece_images:
-                image = self.board_gui.piece_images[symbol]
+            # Get piece image using piece_loader
+            image = self.board_gui.piece_loader.get_piece_image(
+                self.drag_piece, self.board_gui.square_size
+            )
 
-                # Calculate position to center image on cursor
+            if image:
+                # Draw centered on cursor position
                 x = self.drag_pos[0] - image.get_width() // 2
                 y = self.drag_pos[1] - image.get_height() // 2
 
-                # Blit piece image at cursor position
                 self.board_gui.screen.blit(image, (x, y))
 
     def is_square_selected(self) -> bool:

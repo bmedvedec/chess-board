@@ -22,18 +22,17 @@ class PromotionDialog:
     clicks and keyboard shortcuts for selection.
     """
 
-    def __init__(self, screen: pygame.Surface, piece_images: dict):
+    def __init__(self, screen: pygame.Surface, piece_loader):
         """
         Initialize the promotion dialog with display surface and piece images.
 
         Args:
             screen (pygame.Surface): Main pygame display surface
-            piece_images (dict): Dictionary mapping piece symbols (e.g., 'Q', 'q')
-                to pygame.Surface sprite images
+            piece_loader: PieceLoader instance for rendering piece images
         """
-        # Store references to display and piece graphics
+        # Store references to display and piece loader
         self.screen = screen
-        self.piece_images = piece_images
+        self.piece_loader = piece_loader
 
         # Dialog box dimensions and position
         self.dialog_width = 400
@@ -163,27 +162,17 @@ class PromotionDialog:
                 # Add border around button (2 pixels wide)
                 pygame.draw.rect(self.screen, Colors.BORDER, piece_rect, 2)
 
-                # Render piece image on button
-                # Convert piece symbol to correct case based on color
-                # White pieces use uppercase (Q, R, B, N), black uses lowercase (q, r, b, n)
-                if is_white:
-                    full_symbol = piece_symbol.upper()
-                else:
-                    full_symbol = piece_symbol.lower()
+                # Draw piece image using piece_loader
+                # Create a chess.Piece object to get the image
+                piece = chess.Piece(
+                    piece_type, chess.WHITE if is_white else chess.BLACK
+                )
+                image = self.piece_loader.get_piece_image(piece, self.piece_size)
 
-                # Look up and render the piece sprite
-                if full_symbol in self.piece_images:
-                    image = self.piece_images[full_symbol]
-
-                    # Scale image to fit within button with 5-pixel padding on each side
-                    # This creates a small margin around the piece for visual clarity
-                    scaled_image = pygame.transform.smoothscale(
-                        image, (self.piece_size - 10, self.piece_size - 10)
-                    )
-
-                    # Center the piece image within the button rectangle
-                    image_rect = scaled_image.get_rect(center=piece_rect.center)
-                    self.screen.blit(scaled_image, image_rect)
+                if image:
+                    # Center image in the button
+                    image_rect = image.get_rect(center=piece_rect.center)
+                    self.screen.blit(image, image_rect)
 
             # Update the display to show all rendered elements
             # flip() is used instead of update() to refresh the entire screen

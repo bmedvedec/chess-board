@@ -251,7 +251,6 @@ def main():
         x=Config.MOVE_HISTORY_X,
         y=Config.MOVE_HISTORY_Y + Config.MOVE_HISTORY_HEIGHT + 140,
         width=Config.MOVE_HISTORY_WIDTH,
-        piece_images=board_gui.piece_images,
     )
     print("✅ Captured pieces display initialized")
 
@@ -457,7 +456,6 @@ def main():
                     x=Config.CAPTURED_PIECES_X,
                     y=Config.CAPTURED_PIECES_Y,
                     width=Config.CAPTURED_PIECES_WIDTH,
-                    piece_images=board_gui.piece_images,
                 )
                 game_clock = GameClock(
                     screen,

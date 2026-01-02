@@ -226,28 +226,20 @@ class MoveAnimator:
         if pos is None:
             return
 
-        # Get piece symbol (e.g., 'P', 'n', 'K', 'q')
-        symbol = self.animation_piece.symbol()
+        # Get piece image using piece_loader
+        image = self.board_gui.piece_loader.get_piece_image(
+            self.animation_piece, self.board_gui.square_size
+        )
 
-        # Look up piece image in BoardGUI's image cache
-        if symbol not in self.board_gui.piece_images:
+        # Early exit if no image found
+        if image is None:
             return
 
-        # Get the piece image surface
-        image = self.board_gui.piece_images[symbol]
-
-        # pos is the CENTER point where piece should be
-        # blit() requires TOP-LEFT corner, so we offset by half the image size
-
-        # Calculate top-left X coordinate
-        # Subtract half image width to center horizontally
+        # Draw centered on current position
         x = pos[0] - image.get_width() // 2
-
-        # Calculate top-left Y coordinate
-        # Subtract half image height to center vertically
         y = pos[1] - image.get_height() // 2
 
-        # Blit piece image at calculated position
+        # Render the image
         screen.blit(image, (x, y))
 
     def is_square_being_animated(self, square: chess.Square) -> bool:

@@ -15,6 +15,7 @@ from pathlib import Path
 
 from gui.colors import Colors, PIECE_COLORS, PIECE_TYPES
 from utils.config import Config
+from gui.piece_loader import PieceLoader
 
 
 class BoardGUI:
@@ -55,9 +56,9 @@ class BoardGUI:
             self.board_x = (Config.WINDOW_WIDTH - Config.BOARD_SIZE) // 2
             self.board_y = (Config.WINDOW_HEIGHT - Config.BOARD_SIZE) // 2
 
-        # Load and cache all piece sprite images
-        # Images are loaded once during initialization for performance
-        self.piece_images = self._load_piece_images()
+        # Initialize PieceLoader
+        self.piece_loader = PieceLoader(piece_dir=Config.PIECE_IMAGES_DIR)
+        self.piece_loader.load_pieces(self.square_size)
 
         # Initialize font system for rendering coordinate labels
         pygame.font.init()
@@ -67,119 +68,7 @@ class BoardGUI:
         print("[BoardGUI] Initialized successfully")
         print(f"    Square size: {self.square_size}x{self.square_size}")
         print(f"    Board position: ({self.board_x}, {self.board_y})")
-        print(f"    Piece images loaded: {len(self.piece_images)} pieces")
-
-    def _load_piece_images(self) -> dict:
-        """
-        Load and scale chess piece images from the assets directory.
-
-        Returns:
-            dict: Dictionary mapping piece symbols to pygame.Surface objects
-                Keys follow python-chess convention:
-                - Uppercase for white pieces: 'P', 'N', 'B', 'R', 'Q', 'K'
-                - Lowercase for black pieces: 'p', 'n', 'b', 'r', 'q', 'k'
-        """
-        images = {}
-
-        # Define all 12 piece symbols following python-chess FEN notation
-        # Uppercase letters represent white pieces, lowercase represent black
-        piece_symbols = {
-            "P": ("white", "pawn"),
-            "N": ("white", "knight"),
-            "B": ("white", "bishop"),
-            "R": ("white", "rook"),
-            "Q": ("white", "queen"),
-            "K": ("white", "king"),
-            "p": ("black", "pawn"),
-            "n": ("black", "knight"),
-            "b": ("black", "bishop"),
-            "r": ("black", "rook"),
-            "q": ("black", "queen"),
-            "k": ("black", "king"),
-        }
-
-        # Get path to assets directory from configuration
-        assets_path = Path(Config.PIECE_IMAGES_DIR)
-
-        if assets_path.exists():
-            # Assets directory found - attempt to load each piece
-            for symbol, (color, piece_type) in piece_symbols.items():
-                # Try multiple file naming conventions for maximum compatibility
-                # Different chess piece sets use different naming schemes
-                possible_names = [
-                    f"{color}_{piece_type}.png",  # e.g., "white_pawn.png"
-                    f"{color[0]}{piece_type[0]}.png",  # e.g., "wp.png"
-                    f"{PIECE_COLORS[color]}{PIECE_TYPES[piece_type]}.png",  # e.g., "wP.png"
-                ]
-
-                loaded = False
-                for filename in possible_names:
-                    image_path = assets_path / filename
-                    if image_path.exists():
-                        try:
-                            # Load the image file
-                            image = pygame.image.load(str(image_path))
-
-                            # Scale image to fit within square with 15% padding
-                            # This ensures pieces don't touch square edges
-                            size = int(self.square_size * 0.85)
-                            image = pygame.transform.scale(image, (size, size))
-
-                            images[symbol] = image
-                            loaded = True
-                            break
-                        except pygame.error as e:
-                            print(f"[Warning] Failed to load {image_path}: {e}")
-
-                # If no image file worked, create a placeholder
-                if not loaded:
-                    images[symbol] = self._create_placeholder_piece(symbol)
-        else:
-            # Assets directory doesn't exist - use placeholders for all pieces
-            print(f"[Warning] Assets directory not found: {assets_path}")
-            print("[Info] Using placeholder pieces (colored circles)")
-            for symbol in piece_symbols.keys():
-                images[symbol] = self._create_placeholder_piece(symbol)
-
-        return images
-
-    def _create_placeholder_piece(self, symbol: str) -> pygame.Surface:
-        """
-        Generate a placeholder graphic for a chess piece.
-
-        Args:
-            symbol (str): Piece symbol following FEN notation
-                Uppercase for white (P, N, B, R, Q, K)
-                Lowercase for black (p, n, b, r, q, k)
-
-        Returns:
-            pygame.Surface: Transparent surface containing the placeholder graphic
-        """
-        # Calculate size to match loaded images (85% of square)
-        size = int(self.square_size * 0.85)
-
-        # Create transparent surface for the piece
-        surface = pygame.Surface((size, size), pygame.SRCALPHA)
-
-        # Determine colors based on piece color (uppercase = white)
-        is_white = symbol.isupper()
-        circle_color = (240, 240, 240) if is_white else (50, 50, 50)
-        border_color = (50, 50, 50) if is_white else (240, 240, 240)
-
-        # Draw filled circle for the piece body
-        center = size // 2
-        pygame.draw.circle(surface, circle_color, (center, center), center - 2)
-
-        # Draw circle outline for definition
-        pygame.draw.circle(surface, border_color, (center, center), center - 2, 2)
-
-        # Render piece letter (uppercase) centered in the circle
-        font = pygame.font.SysFont("Arial", size // 2, bold=True)
-        text = font.render(symbol.upper(), True, border_color)
-        text_rect = text.get_rect(center=(center, center))
-        surface.blit(text, text_rect)
-
-        return surface
+        print(f"    Piece loader initialized with PNG assets")
 
     def draw_board(self):
         """
@@ -301,7 +190,7 @@ class BoardGUI:
 
     def _draw_piece(self, piece: chess.Piece, square: chess.Square):
         """
-        Render a single chess piece at its specified square.
+        Render a single chess piece at its specified square using PieceLoader.
 
         Args:
             piece (chess.Piece): python-chess Piece object with color and type info
@@ -310,25 +199,12 @@ class BoardGUI:
         # Convert chess square index to screen coordinates (row, col)
         row, col = self._square_to_coords(square)
 
-        # Get the cached sprite image for this piece type
-        symbol = piece.symbol()
-        if symbol not in self.piece_images:
-            print(f"[Warning] No image for piece: {symbol}")
-            return
-
-        image = self.piece_images[symbol]
-
         # Calculate pixel position of the square's top-left corner
         x = self.board_x + col * self.square_size
         y = self.board_y + row * self.square_size
 
-        # Center the piece image within the square
-        # Images are smaller than squares to provide visual padding
-        piece_x = x + (self.square_size - image.get_width()) // 2
-        piece_y = y + (self.square_size - image.get_height()) // 2
-
-        # Draw the piece sprite to the screen
-        self.screen.blit(image, (piece_x, piece_y))
+        # Use PieceLoader to draw the piece
+        self.piece_loader.draw_piece(self.screen, piece, x, y, self.square_size)
 
     def _square_to_coords(self, square: chess.Square) -> Tuple[int, int]:
         """

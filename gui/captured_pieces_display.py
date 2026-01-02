@@ -19,14 +19,7 @@ class CapturedPiecesDisplay:
     UI component for displaying captured chess pieces and material balance.
     """
 
-    def __init__(
-        self,
-        screen: pygame.Surface,
-        x: int,
-        y: int,
-        width: int,
-        piece_images: dict,
-    ):
+    def __init__(self, screen: pygame.Surface, x: int, y: int, width: int):
         """
         Initialize captured pieces display with position and styling.
 
@@ -46,12 +39,6 @@ class CapturedPiecesDisplay:
             width (int): Display width in pixels.
                 Should match sidebar width, typically 200 pixels.
                 Must be wide enough for several piece icons (minimum ~150px).
-
-            piece_images (dict): Dictionary mapping piece symbols to images.
-                Keys: 'P', 'N', 'B', 'R', 'Q', 'K' (white uppercase)
-                      'p', 'n', 'b', 'r', 'q', 'k' (black lowercase)
-                Values: pygame.Surface images loaded from piece image files.
-                Typically shared from BoardGUI.piece_images.
         """
         # Store display surface reference
         self.screen = screen
@@ -61,14 +48,16 @@ class CapturedPiecesDisplay:
         self.y = y
         self.width = width
 
-        # Store piece image lookup dictionary
-        self.piece_images = piece_images
-
         # Title font for section headers
         self.title_font = pygame.font.SysFont("Arial", 14, bold=True)
 
         # Score font for material advantage display
         self.score_font = pygame.font.SysFont("Arial", 18, bold=True)
+
+        # Font that supports chess symbols
+        self.piece_font = pygame.font.SysFont(
+            "Segoe UI Symbol, Arial Unicode MS, DejaVu Sans", 24
+        )
 
         # Size of captured piece icons in pixels
         self.piece_size = 30
@@ -190,23 +179,9 @@ class CapturedPiecesDisplay:
                 piece_x = self.x + self.padding
                 piece_y += self.piece_size + 2
 
-            # Get piece symbol for image lookup
-            symbol = piece.symbol()
+            # Draw simple piece placeholder (using Unicode symbols)
+            self._draw_piece_placeholder(piece, piece_x, piece_y)
 
-            # Check if we have an image for this piece
-            if symbol in self.piece_images:
-                # Get original piece image
-                image = self.piece_images[symbol]
-
-                # Scale down to icon size (30x30 pixels)
-                scaled_image = pygame.transform.smoothscale(
-                    image, (self.piece_size, self.piece_size)
-                )
-
-                # Draw scaled piece icon
-                self.screen.blit(scaled_image, (piece_x, piece_y))
-
-            # Advance to next piece position
             piece_x += self.piece_size + 2
 
         # -------------------- Material Advantage Score --------------------
@@ -230,6 +205,44 @@ class CapturedPiecesDisplay:
 
             # Draw advantage score
             self.screen.blit(advantage_surface, advantage_rect)
+
+    def _draw_piece_placeholder(self, piece: chess.Piece, x: int, y: int):
+        """
+        Draw a piece using Unicode chess symbols (emoji).
+
+        Args:
+            piece (chess.Piece): Piece to render as placeholder.
+            x (int): X position
+            y (int): Y position
+        """
+        # Unicode chess piece symbols
+        piece_symbols = {
+            (chess.PAWN, chess.WHITE): "♙",
+            (chess.KNIGHT, chess.WHITE): "♘",
+            (chess.BISHOP, chess.WHITE): "♗",
+            (chess.ROOK, chess.WHITE): "♖",
+            (chess.QUEEN, chess.WHITE): "♕",
+            (chess.KING, chess.WHITE): "♔",
+            (chess.PAWN, chess.BLACK): "♟",
+            (chess.KNIGHT, chess.BLACK): "♞",
+            (chess.BISHOP, chess.BLACK): "♝",
+            (chess.ROOK, chess.BLACK): "♜",
+            (chess.QUEEN, chess.BLACK): "♛",
+            (chess.KING, chess.BLACK): "♚",
+        }
+
+        # Get the Unicode symbol
+        symbol = piece_symbols.get((piece.piece_type, piece.color), "?")
+
+        # Render the symbol
+        text_color = (240, 240, 240) if piece.color == chess.WHITE else (100, 100, 100)
+        text = self.piece_font.render(symbol, True, text_color)
+
+        # Center it in the piece size area
+        text_rect = text.get_rect(
+            x=x, y=y, width=self.piece_size, height=self.piece_size
+        )
+        self.screen.blit(text, text_rect)
 
     def _get_captured_pieces(
         self, board: chess.Board
