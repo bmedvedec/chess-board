@@ -53,12 +53,22 @@ class Config:
     MOVE_HISTORY_X = BOARD_X + BOARD_SIZE + SIDE_PANEL_MARGIN
     MOVE_HISTORY_Y = BOARD_Y
     MOVE_HISTORY_WIDTH = SIDE_PANEL_WIDTH
-    MOVE_HISTORY_HEIGHT = 500
+    MOVE_HISTORY_HEIGHT = 340
 
     # Game controls panel - below move history
     GAME_CONTROLS_X = MOVE_HISTORY_X
     GAME_CONTROLS_Y = MOVE_HISTORY_Y + MOVE_HISTORY_HEIGHT + 20
     GAME_CONTROLS_WIDTH = SIDE_PANEL_WIDTH
+
+    # Captured pieces display - below game controls
+    CAPTURED_PIECES_X = MOVE_HISTORY_X
+    CAPTURED_PIECES_Y = GAME_CONTROLS_Y + 150
+    CAPTURED_PIECES_WIDTH = SIDE_PANEL_WIDTH
+
+    # Game clock - below board (optional)
+    GAME_CLOCK_X = BOARD_X
+    GAME_CLOCK_Y = BOARD_Y + BOARD_SIZE + 30
+    GAME_CLOCK_WIDTH = 200
 
     # ===================
     # Player Settings
@@ -138,13 +148,19 @@ class Config:
                 f"HUMAN_COLOR must be 'white' or 'black', got '{cls.HUMAN_COLOR}'"
             )
 
-        # Validate window width can accommodate the board
-        min_width = cls.BOARD_X + cls.BOARD_SIZE + 20
+        # Validate window width can accommodate the board and panels
+        min_width = (
+            cls.BOARD_X
+            + cls.BOARD_SIZE
+            + cls.SIDE_PANEL_MARGIN
+            + cls.SIDE_PANEL_WIDTH
+            + 20
+        )
 
         if cls.WINDOW_WIDTH < min_width:
             errors.append(
                 f"WINDOW_WIDTH ({cls.WINDOW_WIDTH}) too small. "
-                f"Minimum {min_width} needed for board display"
+                f"Minimum {min_width} needed for board + panels"
             )
 
         # Validate window height can accommodate the board

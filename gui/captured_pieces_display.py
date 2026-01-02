@@ -1,0 +1,353 @@
+"""
+Captured Pieces Display
+-----------------------
+Visual display of captured chess pieces and material advantage.
+
+This module provides a UI component that shows which pieces have been
+captured during a chess game. It displays captured pieces for both sides in separate
+sections and highlights material advantage with a numerical score.
+"""
+
+import pygame
+import chess
+from typing import List, Tuple
+from gui.colors import Colors
+
+
+class CapturedPiecesDisplay:
+    """
+    UI component for displaying captured chess pieces and material balance.
+    """
+
+    def __init__(
+        self,
+        screen: pygame.Surface,
+        x: int,
+        y: int,
+        width: int,
+        piece_images: dict,
+    ):
+        """
+        Initialize captured pieces display with position and styling.
+
+        Creates the display component ready to show captured pieces.
+        Sets up fonts, dimensions, and stores references to screen and piece images.
+
+        Args:
+            screen (pygame.Surface): Main pygame display surface.
+                Used for rendering captured pieces display.
+
+            x (int): X-coordinate of display's top-left corner.
+                Typical positioning: 850 (right sidebar).
+
+            y (int): Y-coordinate of display's top-left corner.
+                Typical positioning: 520 (below move history).
+
+            width (int): Display width in pixels.
+                Should match sidebar width, typically 200 pixels.
+                Must be wide enough for several piece icons (minimum ~150px).
+
+            piece_images (dict): Dictionary mapping piece symbols to images.
+                Keys: 'P', 'N', 'B', 'R', 'Q', 'K' (white uppercase)
+                      'p', 'n', 'b', 'r', 'q', 'k' (black lowercase)
+                Values: pygame.Surface images loaded from piece image files.
+                Typically shared from BoardGUI.piece_images.
+        """
+        # Store display surface reference
+        self.screen = screen
+
+        # Store position and dimensions
+        self.x = x
+        self.y = y
+        self.width = width
+
+        # Store piece image lookup dictionary
+        self.piece_images = piece_images
+
+        # Title font for section headers
+        self.title_font = pygame.font.SysFont("Arial", 14, bold=True)
+
+        # Score font for material advantage display
+        self.score_font = pygame.font.SysFont("Arial", 18, bold=True)
+
+        # Size of captured piece icons in pixels
+        self.piece_size = 30
+
+        # Padding from edges of each section
+        self.padding = 10
+
+        # Height of each section (White Lost / Black Lost)
+        self.section_height = 80
+
+    def draw(self, board: chess.Board):
+        """
+        Render complete captured pieces display with both sections.
+
+        It analyzes the current board state to determine captured pieces,
+        calculates material balance, and draws both display sections.
+
+        Args:
+            board (chess.Board): Current board state from python-chess.
+                Used to determine which pieces have been captured.
+                Compared against starting position piece counts.
+        """
+        # Analyze current board to determine which pieces were captured
+        # Returns two lists: pieces each side has lost
+        white_captured, black_captured = self._get_captured_pieces(board)
+
+        # Calculate material difference between the two sides
+        material_score = self._calculate_material_score(white_captured, black_captured)
+
+        # Draw section for White's losses (pieces Black captured)
+        self._draw_section(
+            "White Lost",
+            white_captured,
+            self.y,
+            Colors.COORDINATE_TEXT,
+            material_score if material_score < 0 else 0,
+        )
+
+        # Draw section for Black's losses (pieces White captured)
+        self._draw_section(
+            "Black Lost",
+            black_captured,
+            self.y + self.section_height + 10,
+            Colors.COORDINATE_TEXT,
+            material_score if material_score > 0 else 0,
+        )
+
+    def _draw_section(
+        self,
+        title: str,
+        pieces: List[chess.Piece],
+        y_pos: int,
+        text_color: Tuple[int, int, int],
+        advantage: int,
+    ):
+        """
+        Render one section showing captured pieces for one side.
+
+        Draws a rectangular section containing:
+        - Background and border
+        - Title text ("White Lost" or "Black Lost")
+        - Captured piece icons in rows with wrapping
+        - Material advantage score (if applicable)
+
+        Args:
+            title (str): Section title text.
+                Either "White Lost" or "Black Lost".
+
+            pieces (List[chess.Piece]): Captured pieces to display.
+                Already sorted by value (Queen first, Pawn last).
+                Empty list if no pieces captured.
+
+            y_pos (int): Y-coordinate for top of this section.
+                Allows stacking multiple sections vertically.
+
+            text_color (Tuple[int, int, int]): RGB color for text.
+                Used for title and any labels.
+
+            advantage (int): Material advantage points to display.
+                0 = don't show advantage (equal or opponent's advantage)
+                Positive = show "+N" in green on right side
+                Only shows when this side has the advantage.
+        """
+        # -------------------- Background and Border --------------------
+
+        # Create rectangle for section background
+        bg_rect = pygame.Rect(self.x, y_pos, self.width, self.section_height)
+
+        # Fill with dark gray background
+        pygame.draw.rect(self.screen, (40, 40, 40), bg_rect)
+
+        # Draw border around section
+        pygame.draw.rect(self.screen, Colors.BORDER, bg_rect, 1)
+
+        # -------------------- Title Text --------------------
+
+        # Render section title ("White Lost" or "Black Lost")
+        title_surface = self.title_font.render(title, True, text_color)
+
+        # Position in top-left with padding
+        title_rect = title_surface.get_rect(
+            x=self.x + self.padding, y=y_pos + self.padding
+        )
+
+        # Draw title
+        self.screen.blit(title_surface, title_rect)
+
+        # -------------------- Captured Piece Icons --------------------
+
+        # Starting position for first piece icon
+        piece_x = self.x + self.padding
+        piece_y = y_pos + self.padding + 25
+
+        # Draw each captured piece as small icon
+        for piece in pieces:
+            # Check if current piece would extend beyond right edge
+            if piece_x + self.piece_size > self.x + self.width - self.padding:
+                # Not enough horizontal space - wrap to next row
+                piece_x = self.x + self.padding
+                piece_y += self.piece_size + 2
+
+            # Get piece symbol for image lookup
+            symbol = piece.symbol()
+
+            # Check if we have an image for this piece
+            if symbol in self.piece_images:
+                # Get original piece image
+                image = self.piece_images[symbol]
+
+                # Scale down to icon size (30x30 pixels)
+                scaled_image = pygame.transform.smoothscale(
+                    image, (self.piece_size, self.piece_size)
+                )
+
+                # Draw scaled piece icon
+                self.screen.blit(scaled_image, (piece_x, piece_y))
+
+            # Advance to next piece position
+            piece_x += self.piece_size + 2
+
+        # -------------------- Material Advantage Score --------------------
+
+        # Only draw advantage if this side is ahead (advantage > 0)
+        if advantage > 0:
+            # Format as "+N" (e.g., "+3", "+8")
+            advantage_text = f"+{advantage}"
+
+            # Render in green (WIN_COLOR) to indicate advantage
+            advantage_surface = self.score_font.render(
+                advantage_text, True, Colors.WIN_COLOR
+            )
+
+            # Position in top-right corner with padding
+            # Right-aligned so it doesn't overlap with title
+            advantage_rect = advantage_surface.get_rect(
+                right=self.x + self.width - self.padding,
+                y=y_pos + self.padding,
+            )
+
+            # Draw advantage score
+            self.screen.blit(advantage_surface, advantage_rect)
+
+    def _get_captured_pieces(
+        self, board: chess.Board
+    ) -> Tuple[List[chess.Piece], List[chess.Piece]]:
+        """
+        Analyze board to determine which pieces have been captured.
+
+        Compares current board state to standard starting position to find
+        missing pieces.
+
+        Args:
+            board (chess.Board): Current board state from python-chess.
+                Scanned to count remaining pieces of each type.
+
+        Returns:
+            Tuple[List[chess.Piece], List[chess.Piece]]: Captured pieces lists.
+                - white_captured: White pieces captured by Black
+                - black_captured: Black pieces captured by White
+                Both lists sorted by value (Queen first, Pawn last).
+        """
+        # Define standard starting piece counts
+        # King excluded since it can never be captured
+        starting_counts = {
+            chess.PAWN: 8,
+            chess.KNIGHT: 2,
+            chess.BISHOP: 2,
+            chess.ROOK: 2,
+            chess.QUEEN: 1,
+        }
+
+        # Initialize counters for pieces currently on board
+        white_counts = {piece_type: 0 for piece_type in starting_counts.keys()}
+        black_counts = {piece_type: 0 for piece_type in starting_counts.keys()}
+
+        # Scan entire board to count remaining pieces
+        for square in chess.SQUARES:
+            piece = board.piece_at(square)
+            if piece:
+                # Skip kings - they're never captured
+                if piece.piece_type == chess.KING:
+                    continue
+
+                # Increment counter for this piece type and color
+                if piece.color == chess.WHITE:
+                    white_counts[piece.piece_type] += 1
+                else:
+                    black_counts[piece.piece_type] += 1
+
+        # Calculate which pieces are missing (captured)
+        white_captured = []  # White pieces captured by Black
+        black_captured = []  # Black pieces captured by White
+
+        for piece_type, starting_count in starting_counts.items():
+            # Calculate how many white pieces of this type are missing
+            white_missing = starting_count - white_counts[piece_type]
+            for _ in range(white_missing):
+                # Create piece object for each missing white piece
+                white_captured.append(chess.Piece(piece_type, chess.WHITE))
+
+            # Calculate how many black pieces of this type are missing
+            black_missing = starting_count - black_counts[piece_type]
+            for _ in range(black_missing):
+                # Create piece object for each missing black piece
+                black_captured.append(chess.Piece(piece_type, chess.BLACK))
+
+        # Define piece values for sorting
+        # Higher value = more important piece = display first
+        piece_values = {
+            chess.QUEEN: 9,
+            chess.ROOK: 5,
+            chess.BISHOP: 3,
+            chess.KNIGHT: 3,
+            chess.PAWN: 1,
+        }
+
+        # Sort captured pieces by value (descending)
+        white_captured.sort(key=lambda p: piece_values[p.piece_type], reverse=True)
+        black_captured.sort(key=lambda p: piece_values[p.piece_type], reverse=True)
+
+        return white_captured, black_captured
+
+    def _calculate_material_score(
+        self, white_captured: List[chess.Piece], black_captured: List[chess.Piece]
+    ) -> int:
+        """
+        Calculate material advantage based on captured pieces.
+
+        Uses standard chess piece values to compute net material balance.
+        The side that has captured more valuable pieces has a positive advantage.
+
+        Args:
+            white_captured (List[chess.Piece]): White pieces that were captured.
+                Pieces that Black has taken.
+
+            black_captured (List[chess.Piece]): Black pieces that were captured.
+                Pieces that White has taken.
+
+        Returns:
+            int: Material score indicating advantage.
+                - Positive: White has advantage (captured more value)
+                - Negative: Black has advantage (captured more value)
+                - Zero: Equal material (no advantage)
+        """
+        # Standard chess piece values
+        piece_values = {
+            chess.PAWN: 1,
+            chess.KNIGHT: 3,
+            chess.BISHOP: 3,
+            chess.ROOK: 5,
+            chess.QUEEN: 9,
+        }
+
+        # Calculate total value of white pieces that were captured
+        white_lost = sum(piece_values[p.piece_type] for p in white_captured)
+
+        # Calculate total value of black pieces that were captured
+        black_lost = sum(piece_values[p.piece_type] for p in black_captured)
+
+        # Calculate net material advantage
+        # Positive = White ahead, Negative = Black ahead
+        return black_lost - white_lost

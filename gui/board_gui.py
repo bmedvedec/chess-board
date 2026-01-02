@@ -531,6 +531,25 @@ class BoardGUI:
 
         self.screen.blit(surface, (x, y))
 
+    def draw_last_move_highlight(self, board: chess.Board):
+        """
+        Draw highlight for the last move made.
+        Shows both source and destination squares.
+
+        Args:
+            board: Current board state
+        """
+        if not board.move_stack:
+            return
+
+        last_move = board.peek()
+
+        # Highlight source square
+        self.highlight_square(last_move.from_square, Colors.LAST_MOVE_FROM)
+
+        # Highlight destination square
+        self.highlight_square(last_move.to_square, Colors.LAST_MOVE_TO)
+
     def draw_game_info(self, board: chess.Board):
         """
         Render game status information above the chess board.
@@ -555,10 +574,9 @@ class BoardGUI:
         # Render the text with appropriate color
         text_surface = font.render(turn_text, True, color)
 
-        # Center the text horizontally above the board
-        text_rect = text_surface.get_rect(
-            center=(Config.WINDOW_WIDTH // 2, self.board_y - 40)
-        )
+        # Center text over the board (not the window)
+        board_center_x = self.board_x + self.square_size * 4  # Center of 8 squares
+        text_rect = text_surface.get_rect(centerx=board_center_x, y=self.board_y - 40)
 
         # Draw the text to the screen
         self.screen.blit(text_surface, text_rect)
