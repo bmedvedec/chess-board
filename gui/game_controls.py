@@ -82,7 +82,16 @@ class GameControls:
         # Each button increments this value
         button_y = self.y
 
-        # Button 1: Save Game to PGN File
+        # Button 1: New Game
+        self.buttons["new_game"] = {
+            "rect": pygame.Rect(self.x, button_y, self.width, self.button_height),
+            "text": "New Game",
+            "enabled": True,
+        }
+        # Move Y position down for next button
+        button_y += self.button_height + self.button_spacing
+
+        # Button 2: Save Game to PGN File
         self.buttons["save_pgn"] = {
             "rect": pygame.Rect(self.x, button_y, self.width, self.button_height),
             "text": "Save Game (PGN)",
@@ -91,7 +100,7 @@ class GameControls:
         # Move Y position down for next button
         button_y += self.button_height + self.button_spacing
 
-        # Button 2: Load Game from PGN File
+        # Button 3: Load Game from PGN File
         self.buttons["load_pgn"] = {
             "rect": pygame.Rect(self.x, button_y, self.width, self.button_height),
             "text": "Load Game (PGN)",
@@ -100,7 +109,7 @@ class GameControls:
         # Move Y position down for next button
         button_y += self.button_height + self.button_spacing
 
-        # Button 3: Resign Game
+        # Button 4: Resign Game
         self.buttons["resign"] = {
             "rect": pygame.Rect(self.x, button_y, self.width, self.button_height),
             "text": "Resign",

@@ -10,6 +10,7 @@ uses pygame for rendering and the python-chess library for chess logic.
 """
 
 import sys
+from typing import List
 import pygame
 import chess
 
@@ -138,6 +139,30 @@ def check_game_end_conditions(board_state: BoardState) -> tuple:
 
     # Game continues
     return (False, None, None, None)
+
+
+def navigate_to_move(move_index: int, full_move_history: List[str]):
+    """
+    Create a board state at a specific move in the history.
+
+    Args:
+        move_index: Index in move history (0 = after first move, -1 = current)
+        full_move_history: Complete move history in UCI format
+
+    Returns:
+        New BoardState at the requested position
+    """
+    # Create fresh board
+    nav_state = BoardState()
+
+    # Replay moves up to and including the selected move
+    moves_to_play = move_index + 1 if move_index >= 0 else len(full_move_history)
+
+    for i in range(min(moves_to_play, len(full_move_history))):
+        move_uci = full_move_history[i]
+        nav_state.make_move_uci(move_uci)
+
+    return nav_state
 
 
 def check_engine_turn_and_move(board_state, engine_controller, move_history):
@@ -323,6 +348,54 @@ def main():
                 if event.key == pygame.K_ESCAPE:
                     running = False
 
+                # Left arrow - previous halfmove
+                elif event.key == pygame.K_LEFT:
+                    # Previous halfmove
+                    current_idx = len(board_state.board.move_stack) - 1
+                    if current_idx > 0:  # Can go back
+                        target_idx = current_idx - 1
+                        board_state = navigate_to_move(target_idx, move_history)
+                        input_handler.board_state = board_state
+                        input_handler.reset()
+                        print(
+                            f"[Navigation] ← Previous move (position {target_idx + 1})"
+                        )
+                    elif current_idx == 0:  # At first move, go to start
+                        board_state = navigate_to_move(-1, move_history)
+                        input_handler.board_state = board_state
+                        input_handler.reset()
+                        print(f"[Navigation] ← Start position")
+
+                # Right arrow - next halfmove
+                elif event.key == pygame.K_RIGHT:
+                    # Next halfmove
+                    current_idx = len(board_state.board.move_stack) - 1
+                    if current_idx < len(move_history) - 1:
+                        target_idx = current_idx + 1
+                        board_state = navigate_to_move(target_idx, move_history)
+                        input_handler.board_state = board_state
+                        input_handler.reset()
+                        print(f"[Navigation] → Next move (position {target_idx + 1})")
+
+                # Up arrow - jump to first move
+                elif event.key == pygame.K_UP:
+                    # Jump to first move
+                    if move_history:
+                        board_state = navigate_to_move(0, move_history)
+                        input_handler.board_state = board_state
+                        input_handler.reset()
+                        print(f"[Navigation] ↑ First move")
+
+                # Down arrow - jump to last played move
+                elif event.key == pygame.K_DOWN:
+                    # Jump to last played move
+                    if move_history:
+                        target_idx = len(move_history) - 1
+                        board_state = navigate_to_move(target_idx, move_history)
+                        input_handler.board_state = board_state
+                        input_handler.reset()
+                        print(f"[Navigation] ↓ Last move (latest position)")
+
                 # S key opens settings menu
                 elif event.key == pygame.K_s:
                     print("[Menu] Opening settings...")
@@ -484,11 +557,32 @@ def main():
                     move_panel.handle_mouse_wheel(event.y)
 
             # Mouse events - Support BOTH drag-and-drop AND click-to-move
-            elif event.type == pygame.MOUSEBUTTONDOWN and not game_ended:
+            elif event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:  # Left click
                     # Check for game controls clicks
                     button_id = game_controls.handle_click(event.pos)
 
+                    # Handle New Game button click
+                    if button_id == "new_game":
+                        print("[Action] New Game button pressed")
+                        board_state.reset()
+                        input_handler.reset()
+                        move_history.clear()
+                        engine_controller.cancel_thinking()
+                        game_ended = False
+                        last_result = None
+                        move_panel.scroll_to_top()
+                        game_clock.reset()
+                        game_clock.start_game()
+                        move_animator.cancel()
+                        sound_manager.play_game_start_sound()
+
+                        # Check if engine should move first
+                        engine_thinking = check_engine_turn_and_move(
+                            board_state, engine_controller, move_history
+                        )
+
+                    # Handle save button click
                     if button_id == "save_pgn":
                         if len(board_state.board.move_stack) > 0:
                             filename = pgn_dialog.show_save_dialog()
@@ -497,6 +591,7 @@ def main():
                                 if save_pgn_to_file(pgn_string, filename):
                                     print(f"[Action] ✅ Game saved to: {filename}")
 
+                    # Handle load button click
                     elif button_id == "load_pgn":
                         filename = pgn_dialog.show_load_dialog()
                         if filename:
@@ -514,6 +609,7 @@ def main():
                                 except Exception as e:
                                     print(f"[Action] ❌ Failed to load: {e}")
 
+                    # Handle resign button click
                     elif button_id == "resign":
                         # Current player resigns
                         winner = (
@@ -543,18 +639,49 @@ def main():
                                 board_state, engine_controller, move_history
                             )
 
+                    # Move history click navigation
                     else:
-                        # Handle piece selection for drag
-                        human_color = (
-                            chess.WHITE
-                            if Config.HUMAN_COLOR == "white"
-                            else chess.BLACK
-                        )
-                        if (
-                            board_state.board.turn == human_color
-                            and not engine_controller.is_thinking()
+                        # Check if user clicked on move history panel
+                        clicked_move_idx = move_panel.handle_click(event.pos)
+
+                        # If a move was clicked, navigate to that position
+                        if clicked_move_idx is not None and clicked_move_idx < len(
+                            move_history
                         ):
-                            input_handler.handle_mouse_down(event.pos)
+                            print(
+                                f"[Navigation] Jumped to position after move {clicked_move_idx + 1}"
+                            )
+
+                            # Create new board state at that position
+                            board_state = navigate_to_move(
+                                clicked_move_idx, move_history
+                            )
+
+                            # Update references
+                            input_handler.board_state = board_state
+                            input_handler.reset()
+
+                            # Cancel any thinking
+                            engine_controller.cancel_thinking()
+
+                            # This is navigation mode - viewing only
+                            # To resume play, user clicks "New Game"
+                            print(f"[Navigation] Position: {board_state.get_fen()}")
+                            print("[Navigation] Click 'New Game' to start fresh game")
+
+                        # Continue with existing click handling for piece selection
+                        elif not game_ended:
+                            # Handle piece selection for drag
+                            human_color = (
+                                chess.WHITE
+                                if Config.HUMAN_COLOR == "white"
+                                else chess.BLACK
+                            )
+                            if (
+                                board_state.board.turn == human_color
+                                and not engine_controller.is_thinking()
+                            ):
+                                input_handler.handle_mouse_down(event.pos)
 
             # Mouse button up - handle move completion
             elif event.type == pygame.MOUSEBUTTONUP and not game_ended:
@@ -827,8 +954,22 @@ def main():
         # Draw game clock
         game_clock.draw(board_state.board.turn)
 
-        # Draw move history panel
-        move_panel.draw(board_state.get_move_history_san())
+        # Calculate current move index for highlighting
+        current_move_idx = (
+            len(board_state.board.move_stack) - 1
+            if board_state.board.move_stack
+            else -1
+        )
+
+        # Convert UCI move history to SAN for display
+        # Use the ORIGINAL move_history (not board_state's) to show all moves even during navigation
+        full_san_history = []
+        temp_board = BoardState()
+        for move_uci in move_history:
+            temp_board.make_move_uci(move_uci)
+        full_san_history = temp_board.get_move_history_san()
+
+        move_panel.draw(full_san_history, current_move_idx)
 
         # Draw game controls
         game_controls.draw()

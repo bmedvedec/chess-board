@@ -327,6 +327,10 @@ class HelpScreen:
         shortcuts = [
             ("R", "Start new game / Reset"),
             ("U", "Undo last move (2 moves)"),
+            ("←", "Previous move"),
+            ("→", "Next move"),
+            ("↑", "First move"),
+            ("↓", "Last move"),
             ("S", "Open settings menu"),
             ("H", "Show this help screen"),
             ("ESC", "Close menu / Exit game"),

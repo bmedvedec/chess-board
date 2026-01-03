@@ -5,7 +5,7 @@ Scrollable panel for displaying chess move history in Standard Algebraic Notatio
 """
 
 import pygame
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 from gui.colors import Colors
 
 
@@ -17,6 +17,7 @@ class MoveHistoryPanel:
     game move history in traditional chess notation. Moves are shown in pairs
     (White and Black on the same line) with automatic move numbering. The panel
     supports scrolling for long games and can optionally highlight the current move.
+    Supported click navigation for move selection as well.
     """
 
     def __init__(
@@ -83,6 +84,10 @@ class MoveHistoryPanel:
 
         # Inner padding from panel edges
         self.padding = 10
+
+        # -------------------- Move selection tracking --------------------
+        self.selected_move_index: Optional[int] = None  # Index in flat move list
+        self.hover_move_index: Optional[int] = None  # For hover effects
 
     def draw(self, move_history_san: List[str], current_move_number: int = -1):
         """
@@ -211,6 +216,10 @@ class MoveHistoryPanel:
         # Calculate end index (non-inclusive)
         end_idx = min(start_idx + self.visible_lines, total_lines)
 
+        # Get current mouse position for hover detection
+        mouse_pos = pygame.mouse.get_pos()
+        self.hover_move_index = None
+
         # -------------------- Render Visible Moves --------------------
 
         # Iterate through only the visible move pairs
@@ -225,47 +234,84 @@ class MoveHistoryPanel:
                 current_move_number == i * 2 or current_move_number == i * 2 + 1
             )
 
+            # Create rectangle for this move line (for click detection)
+            move_line_rect = pygame.Rect(
+                self.rect.x + self.padding,
+                y_offset - 2,
+                self.rect.width - 2 * self.padding,
+                self.line_height,
+            )
+
+            # Check if mouse is hovering over this line
+            is_hovering = move_line_rect.collidepoint(mouse_pos)
+
+            # Hover highlight
+            if is_hovering:
+                pygame.draw.rect(self.screen, (70, 70, 80), move_line_rect)
+                # Track which move(s) are being hovered
+                self.hover_move_index = i * 2
+
             # Draw highlight background if current move
             if is_current:
-                # Create rectangle for highlight background
-                highlight_rect = pygame.Rect(
-                    self.rect.x + self.padding,
-                    y_offset - 2,
-                    self.rect.width - 2 * self.padding,
-                    self.line_height,
-                )
-
                 # Draw blue-gray background for current move
-                pygame.draw.rect(self.screen, (80, 80, 100), highlight_rect)
+                pygame.draw.rect(self.screen, (80, 80, 100), move_line_rect)
 
-            # Format move line with proper alignment
+            # Render move number
+            move_num_text = f"{move_num:>3}."
+            num_surface = self.move_font.render(
+                move_num_text, True, Colors.COORDINATE_TEXT
+            )
+            self.screen.blit(num_surface, (self.rect.x + self.padding + 5, y_offset))
 
-            # Create formatted move string with fixed-width columns
-            move_line = f"{move_num:>3}. {white_move:<8} {black_move:<8}"
+            # Calculate positions for white and black moves
+            num_width = 40  # Width for move number
+            white_x = self.rect.x + self.padding + 5 + num_width
+            black_x = white_x + 70  # 70px after white move
 
-            # Render move text
+            # Check which specific move is current (white or black)
+            is_white_current = current_move_number == i * 2
+            is_black_current = current_move_number == i * 2 + 1
 
-            # Choose text color based on highlight state
-            move_color = Colors.COORDINATE_TEXT if not is_current else (255, 255, 255)
+            # Draw WHITE move with individual highlight
+            if white_move:
+                # Highlight background for selected white move
+                if is_white_current:
+                    white_rect = pygame.Rect(
+                        white_x - 2, y_offset - 2, 68, self.line_height
+                    )
+                    pygame.draw.rect(
+                        self.screen, (100, 120, 140), white_rect, border_radius=3
+                    )
 
-            # Render the formatted move line
-            # Anti-aliasing (True) makes text smooth
-            move_text = self.move_font.render(move_line, True, move_color)
+                # Choose color: bright white if selected, normal otherwise
+                white_color = (
+                    (255, 255, 255) if is_white_current else Colors.COORDINATE_TEXT
+                )
+                white_surface = self.move_font.render(white_move, True, white_color)
+                self.screen.blit(white_surface, (white_x, y_offset))
 
-            # Position text with padding from left edge and small additional offset
-            move_rect = move_text.get_rect(x=self.rect.x + self.padding + 5, y=y_offset)
+            # Draw BLACK move with individual highlight
+            if black_move:
+                # Highlight background for selected black move
+                if is_black_current:
+                    black_rect = pygame.Rect(
+                        black_x - 2, y_offset - 2, 68, self.line_height
+                    )
+                    pygame.draw.rect(
+                        self.screen, (100, 120, 140), black_rect, border_radius=3
+                    )
 
-            # Clip text to panel bounds
+                # Choose color: bright white if selected, normal otherwise
+                black_color = (
+                    (255, 255, 255) if is_black_current else Colors.COORDINATE_TEXT
+                )
+                black_surface = self.move_font.render(black_move, True, black_color)
+                self.screen.blit(black_surface, (black_x, y_offset))
 
-            # Stop rendering if we've reached the bottom of panel
-            # Prevents text from overflowing panel boundaries
-            if move_rect.bottom > self.rect.bottom - self.padding:
+            # Update y_offset for next line
+            if y_offset + self.line_height > self.rect.bottom - self.padding:
                 break
 
-            # Draw the move text
-            self.screen.blit(move_text, move_rect)
-
-            # Advance Y position for next move line
             y_offset += self.line_height
 
         # -------------------- Draw Scrollbar If Needed --------------------
@@ -330,6 +376,51 @@ class MoveHistoryPanel:
 
         # Draw border around thumb for definition
         pygame.draw.rect(self.screen, Colors.BORDER, thumb_rect, 1)
+
+    def handle_click(self, pos: Tuple[int, int]) -> Optional[int]:
+        """
+        Handle click on move to navigate to that position.
+
+        Returns:
+            Optional[int]: Move index (0-based in flat list) if clicked, None otherwise
+        """
+        # Check if click is within panel
+        if not self.rect.collidepoint(pos):
+            return None
+
+        # Calculate which line was clicked
+        separator_y = self.rect.y + 35
+        y_offset = separator_y + 10
+        click_y = pos[1]
+
+        # Check if click is in the moves area
+        if click_y < y_offset:
+            return None
+
+        # Calculate which line was clicked
+        line_clicked = (click_y - y_offset) // self.line_height
+
+        # Adjust for scroll offset
+        move_pair_index = self.scroll_offset + line_clicked
+
+        # Calculate x position to determine white vs black move
+        click_x = pos[0]
+        move_number_width = 40  # Approximate width of "  1."
+        white_move_start = self.rect.x + self.padding + 5 + move_number_width
+        white_move_width = 70  # Approximate width of white move column
+
+        # Determine if clicked on white or black move
+        if click_x < white_move_start + white_move_width:
+            # Clicked on white's move
+            move_index = move_pair_index * 2
+        else:
+            # Clicked on black's move
+            move_index = move_pair_index * 2 + 1
+
+        # Store selected move
+        self.selected_move_index = move_index
+
+        return move_index
 
     def scroll_up(self, lines: int = 1):
         """
