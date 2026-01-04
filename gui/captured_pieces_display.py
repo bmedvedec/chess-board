@@ -19,7 +19,18 @@ class CapturedPiecesDisplay:
     UI component for displaying captured chess pieces and material balance.
     """
 
-    def __init__(self, screen: pygame.Surface, x: int, y: int, width: int):
+    def __init__(
+        self,
+        screen: pygame.Surface,
+        white_x: int,
+        white_y: int,
+        white_width: int,
+        white_height: int,
+        black_x: int,
+        black_y: int,
+        black_width: int,
+        black_height: int,
+    ):
         """
         Initialize captured pieces display with position and styling.
 
@@ -30,43 +41,41 @@ class CapturedPiecesDisplay:
             screen (pygame.Surface): Main pygame display surface.
                 Used for rendering captured pieces display.
 
-            x (int): X-coordinate of display's top-left corner.
-                Typical positioning: 850 (right sidebar).
+            white_x (int): X position for white's captured pieces section.
+            white_y (int): Y position for white's captured pieces section.
+            white_width (int): Width of white's captured pieces section.
+            white_height (int): Height of white's captured pieces section.
 
-            y (int): Y-coordinate of display's top-left corner.
-                Typical positioning: 520 (below move history).
-
-            width (int): Display width in pixels.
-                Should match sidebar width, typically 200 pixels.
-                Must be wide enough for several piece icons (minimum ~150px).
+            black_x (int): X position for black's captured pieces section.
+            black_y (int): Y position for black's captured pieces section.
+            black_width (int): Width of black's captured pieces section.
+            black_height (int): Height of black's captured pieces section.
         """
         # Store display surface reference
         self.screen = screen
 
-        # Store position and dimensions
-        self.x = x
-        self.y = y
-        self.width = width
+        # White's captured pieces section (above board)
+        self.white_rect = pygame.Rect(white_x, white_y, white_width, white_height)
+
+        # Black's captured pieces section (below board)
+        self.black_rect = pygame.Rect(black_x, black_y, black_width, black_height)
 
         # Title font for section headers
-        self.title_font = pygame.font.SysFont("Arial", 14, bold=True)
+        self.title_font = pygame.font.SysFont("Arial", 11, bold=True)
 
         # Score font for material advantage display
-        self.score_font = pygame.font.SysFont("Arial", 18, bold=True)
+        self.score_font = pygame.font.SysFont("Arial", 14, bold=True)
 
         # Font that supports chess symbols
         self.piece_font = pygame.font.SysFont(
-            "Segoe UI Symbol, Arial Unicode MS, DejaVu Sans", 24
+            "Segoe UI Symbol, Arial Unicode MS, DejaVu Sans", 20
         )
 
         # Size of captured piece icons in pixels
-        self.piece_size = 30
+        self.piece_size = 24
 
         # Padding from edges of each section
-        self.padding = 10
-
-        # Height of each section (White Lost / Black Lost)
-        self.section_height = 80
+        self.padding = 4
 
     def draw(self, board: chess.Board):
         """
@@ -91,7 +100,7 @@ class CapturedPiecesDisplay:
         self._draw_section(
             "White Lost",
             white_captured,
-            self.y,
+            self.white_rect,
             Colors.COORDINATE_TEXT,
             material_score if material_score < 0 else 0,
         )
@@ -100,7 +109,7 @@ class CapturedPiecesDisplay:
         self._draw_section(
             "Black Lost",
             black_captured,
-            self.y + self.section_height + 10,
+            self.black_rect,
             Colors.COORDINATE_TEXT,
             material_score if material_score > 0 else 0,
         )
@@ -109,7 +118,7 @@ class CapturedPiecesDisplay:
         self,
         title: str,
         pieces: List[chess.Piece],
-        y_pos: int,
+        rect: pygame.Rect,
         text_color: Tuple[int, int, int],
         advantage: int,
     ):
@@ -130,8 +139,8 @@ class CapturedPiecesDisplay:
                 Already sorted by value (Queen first, Pawn last).
                 Empty list if no pieces captured.
 
-            y_pos (int): Y-coordinate for top of this section.
-                Allows stacking multiple sections vertically.
+            rect (pygame.Rect): Bounding rectangle for this section.
+                Defines position and size of the section.
 
             text_color (Tuple[int, int, int]): RGB color for text.
                 Used for title and any labels.
@@ -143,14 +152,11 @@ class CapturedPiecesDisplay:
         """
         # -------------------- Background and Border --------------------
 
-        # Create rectangle for section background
-        bg_rect = pygame.Rect(self.x, y_pos, self.width, self.section_height)
-
         # Fill with dark gray background
-        pygame.draw.rect(self.screen, (40, 40, 40), bg_rect)
+        pygame.draw.rect(self.screen, (40, 40, 40), rect)
 
         # Draw border around section
-        pygame.draw.rect(self.screen, Colors.BORDER, bg_rect, 1)
+        pygame.draw.rect(self.screen, Colors.BORDER, rect, 1)
 
         # -------------------- Title Text --------------------
 
@@ -159,7 +165,7 @@ class CapturedPiecesDisplay:
 
         # Position in top-left with padding
         title_rect = title_surface.get_rect(
-            x=self.x + self.padding, y=y_pos + self.padding
+            x=rect.x + self.padding, y=rect.y + self.padding
         )
 
         # Draw title
@@ -168,19 +174,23 @@ class CapturedPiecesDisplay:
         # -------------------- Captured Piece Icons --------------------
 
         # Starting position for first piece icon
-        piece_x = self.x + self.padding
-        piece_y = y_pos + self.padding + 25
+        piece_x = rect.x + self.padding
+        piece_y = rect.y + self.padding + 14
 
         # Draw each captured piece as small icon
         for piece in pieces:
             # Check if current piece would extend beyond right edge
-            if piece_x + self.piece_size > self.x + self.width - self.padding:
+            if piece_x + self.piece_size > rect.right - self.padding:
                 # Not enough horizontal space - wrap to next row
-                piece_x = self.x + self.padding
+                piece_x = rect.x + self.padding
                 piece_y += self.piece_size + 2
 
-            # Draw simple piece placeholder (using Unicode symbols)
-            self._draw_piece_placeholder(piece, piece_x, piece_y)
+            # Check if we're out of vertical space
+            if piece_y + self.piece_size > rect.bottom - self.padding:
+                break  # Stop drawing if no more room
+
+            # Draw simple piece icon (using Unicode symbols)
+            self._draw_piece_icon(piece, piece_x, piece_y)
 
             piece_x += self.piece_size + 2
 
@@ -199,14 +209,14 @@ class CapturedPiecesDisplay:
             # Position in top-right corner with padding
             # Right-aligned so it doesn't overlap with title
             advantage_rect = advantage_surface.get_rect(
-                right=self.x + self.width - self.padding,
-                y=y_pos + self.padding,
+                right=rect.right - self.padding,
+                y=rect.y + self.padding,
             )
 
             # Draw advantage score
             self.screen.blit(advantage_surface, advantage_rect)
 
-    def _draw_piece_placeholder(self, piece: chess.Piece, x: int, y: int):
+    def _draw_piece_icon(self, piece: chess.Piece, x: int, y: int):
         """
         Draw a piece using Unicode chess symbols (emoji).
 
@@ -238,11 +248,8 @@ class CapturedPiecesDisplay:
         text_color = (240, 240, 240) if piece.color == chess.WHITE else (100, 100, 100)
         text = self.piece_font.render(symbol, True, text_color)
 
-        # Center it in the piece size area
-        text_rect = text.get_rect(
-            x=x, y=y, width=self.piece_size, height=self.piece_size
-        )
-        self.screen.blit(text, text_rect)
+        # Draw at the specified position
+        self.screen.blit(text, (x, y))
 
     def _get_captured_pieces(
         self, board: chess.Board
@@ -280,11 +287,7 @@ class CapturedPiecesDisplay:
         # Scan entire board to count remaining pieces
         for square in chess.SQUARES:
             piece = board.piece_at(square)
-            if piece:
-                # Skip kings - they're never captured
-                if piece.piece_type == chess.KING:
-                    continue
-
+            if piece and piece.piece_type != chess.KING:
                 # Increment counter for this piece type and color
                 if piece.color == chess.WHITE:
                     white_counts[piece.piece_type] += 1

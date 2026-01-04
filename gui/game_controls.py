@@ -27,7 +27,8 @@ class GameControls:
         x: int,
         y: int,
         width: int,
-        button_height: int = 40,
+        icon_size: int = 50,
+        spacing: int = 10,
     ):
         """
         Initialize game controls panel with button layout.
@@ -47,8 +48,11 @@ class GameControls:
             width (int): Width of all buttons in pixels.
                 All buttons in the panel have identical width.
 
-            button_height (int, optional): Height of each button in pixels.
-                Defaults to 40. All buttons have same height.
+            icon_size (int, optional): Height of each button in pixels.
+                Defaults to 50.
+
+            spacing (int, optional): Vertical space between buttons in pixels.
+                Defaults to 10.
         """
         # Store display surface reference
         self.screen = screen
@@ -57,12 +61,11 @@ class GameControls:
         self.x = x
         self.y = y
         self.width = width
-        self.button_height = button_height
-        self.button_spacing = 10
+        self.icon_size = icon_size
+        self.spacing = spacing
 
-        # Create fonts for button text
-        self.button_font = pygame.font.SysFont("Arial", 16, bold=True)
-        self.label_font = pygame.font.SysFont("Arial", 14)
+        # Fonts
+        self.tooltip_font = pygame.font.SysFont("Arial", 12)
 
         # Initialize button dictionary
         self.buttons = {}
@@ -71,6 +74,8 @@ class GameControls:
         # Track which button mouse is hovering over (None if no hover)
         # Updated each frame during draw() call
         self.hover_button = None
+        self.hover_time = 0
+        self.tooltip_delay = 30  # Frames before showing tooltip
 
     def _create_buttons(self):
         """
@@ -78,96 +83,250 @@ class GameControls:
 
         Builds a dictionary of buttons arranged vertically in the panel.
         """
-        # Start Y position at top of panel
-        # Each button increments this value
-        button_y = self.y
+        # Calculate horizontal positions for 5 buttons
+        total_buttons = 5
+        total_width = (total_buttons * self.icon_size) + (
+            (total_buttons - 1) * self.spacing
+        )
+        start_x = self.x + (self.width - total_width) // 2  # Center buttons
+
+        button_x = start_x
 
         # Button 1: New Game
         self.buttons["new_game"] = {
-            "rect": pygame.Rect(self.x, button_y, self.width, self.button_height),
-            "text": "New Game",
+            "rect": pygame.Rect(button_x, self.y, self.icon_size, self.icon_size),
+            "tooltip": "New Game (R)",
             "enabled": True,
+            "icon": "refresh",
         }
-        # Move Y position down for next button
-        button_y += self.button_height + self.button_spacing
+        button_x += self.icon_size + self.spacing
 
-        # Button 2: Save Game to PGN File
+        # Button 2: Change Time Control
+        self.buttons["change_time"] = {
+            "rect": pygame.Rect(button_x, self.y, self.icon_size, self.icon_size),
+            "tooltip": "Change Time Control (T)",
+            "enabled": True,
+            "icon": "clock",
+        }
+        button_x += self.icon_size + self.spacing
+
+        # Button 3: Save
         self.buttons["save_pgn"] = {
-            "rect": pygame.Rect(self.x, button_y, self.width, self.button_height),
-            "text": "Save Game (PGN)",
+            "rect": pygame.Rect(button_x, self.y, self.icon_size, self.icon_size),
+            "tooltip": "Save Game (PGN)",
             "enabled": True,
+            "icon": "save",
         }
-        # Move Y position down for next button
-        button_y += self.button_height + self.button_spacing
+        button_x += self.icon_size + self.spacing
 
-        # Button 3: Load Game from PGN File
+        # Button 4: Load
         self.buttons["load_pgn"] = {
-            "rect": pygame.Rect(self.x, button_y, self.width, self.button_height),
-            "text": "Load Game (PGN)",
+            "rect": pygame.Rect(button_x, self.y, self.icon_size, self.icon_size),
+            "tooltip": "Load Game (PGN)",
             "enabled": True,
+            "icon": "load",
         }
-        # Move Y position down for next button
-        button_y += self.button_height + self.button_spacing
+        button_x += self.icon_size + self.spacing
 
-        # Button 4: Resign Game
+        # Button 5: Resign
         self.buttons["resign"] = {
-            "rect": pygame.Rect(self.x, button_y, self.width, self.button_height),
-            "text": "Resign",
+            "rect": pygame.Rect(button_x, self.y, self.icon_size, self.icon_size),
+            "tooltip": "Resign",
             "enabled": True,
+            "icon": "resign",
         }
 
     def draw(self):
         """
-        Render all control buttons with hover effects.
-
-        This method should be called every frame to draw the control panel.
+        Render all icon buttons with hover effects and tooltips.
         """
         # Get current mouse position to detect hover
         mouse_pos = pygame.mouse.get_pos()
-        self.hover_button = None  # Reset hover tracking
+        current_hover = None
 
         # Draw each button with appropriate styling
         for button_id, button in self.buttons.items():
             # Extract button data
             rect = button["rect"]
-            text = button["text"]
             enabled = button["enabled"]
+            icon_type = button["icon"]
 
             # Check if mouse is hovering over this button
             is_hover = rect.collidepoint(mouse_pos) and enabled
 
             if is_hover:
                 # Track which button is currently hovered
-                self.hover_button = button_id
+                current_hover = button_id
 
             # Determine button colors based on state
             if not enabled:
                 # Disabled state: Dark gray background, dimmed text
                 bg_color = (60, 60, 60)
-                text_color = (120, 120, 120)
+                icon_color = (100, 100, 100)
             elif is_hover:
                 # Hover state: Bright highlight color
                 bg_color = Colors.BUTTON_HOVER
-                text_color = Colors.BUTTON_TEXT
+                icon_color = (255, 255, 255)
             else:
                 # Normal state: Standard button color
                 bg_color = Colors.BUTTON_NORMAL
-                text_color = Colors.BUTTON_TEXT
+                icon_color = (220, 220, 220)
 
             # Draw button background
-            pygame.draw.rect(self.screen, bg_color, rect)
+            pygame.draw.rect(self.screen, bg_color, rect, border_radius=5)
 
             # Draw button border
-            pygame.draw.rect(self.screen, Colors.BORDER, rect, 2)
+            pygame.draw.rect(self.screen, Colors.BORDER, rect, 2, border_radius=5)
 
-            # Render button text label
-            text_surface = self.button_font.render(text, True, text_color)
+            # Draw icon
+            self._draw_icon(icon_type, rect, icon_color)
 
-            # Center text within button rectangle
-            text_rect = text_surface.get_rect(center=rect.center)
+        # Handle hover tracking for tooltips
+        if current_hover != self.hover_button:
+            self.hover_button = current_hover
+            self.hover_time = 0
+        elif current_hover:
+            self.hover_time += 1
 
-            # Draw text on top of button
-            self.screen.blit(text_surface, text_rect)
+        # Draw tooltip if hovering long enough
+        if self.hover_button and self.hover_time > self.tooltip_delay:
+            self._draw_tooltip(self.hover_button, mouse_pos)
+
+    def _draw_icon(
+        self, icon_type: str, rect: pygame.Rect, color: Tuple[int, int, int]
+    ):
+        """
+        Draw icon inside button rectangle.
+
+        Args:
+            icon_type (str): Type of icon to draw.
+                Valid types: "refresh", "save", "load", "resign"
+
+            rect (pygame.Rect): Rectangle area to draw icon within.
+
+            color (Tuple[int, int, int]): Color of icon.
+        """
+        # Calculate center and size for icon drawing
+        center_x = rect.centerx
+        center_y = rect.centery
+        size = rect.width // 3
+
+        if icon_type == "refresh":
+            # Circular arrow (new game)
+            # Draw circular arrow using arc and triangle
+            radius = size
+            # Main arc
+            arc_rect = pygame.Rect(
+                center_x - radius, center_y - radius, radius * 2, radius * 2
+            )
+            pygame.draw.arc(self.screen, color, arc_rect, 0.5, 5.8, 3)
+
+            # Arrow head (triangle)
+            arrow_points = [
+                (center_x + radius - 5, center_y - radius + 5),
+                (center_x + radius + 5, center_y - radius - 5),
+                (center_x + radius + 8, center_y - radius + 8),
+            ]
+            pygame.draw.polygon(self.screen, color, arrow_points)
+
+        elif icon_type == "save":
+            # Floppy disk icon
+            # Outer rectangle
+            save_rect = pygame.Rect(
+                center_x - size, center_y - size, size * 2, size * 2
+            )
+            pygame.draw.rect(self.screen, color, save_rect, 2)
+
+            # Top notch (cutout)
+            notch_rect = pygame.Rect(
+                center_x + size // 2, center_y - size, size // 2, size // 2
+            )
+            pygame.draw.rect(self.screen, Colors.BUTTON_NORMAL, notch_rect)
+            pygame.draw.line(
+                self.screen,
+                color,
+                (center_x + size // 2, center_y - size),
+                (center_x + size, center_y - size // 2),
+                2,
+            )
+
+            # Inner rectangle (disk shutter)
+            inner_rect = pygame.Rect(
+                center_x - size + 4, center_y - size // 2, size * 2 - 8, size + 2
+            )
+            pygame.draw.rect(self.screen, color, inner_rect, 2)
+
+        elif icon_type == "load":
+            # Folder icon
+            # Folder body
+            folder_rect = pygame.Rect(
+                center_x - size, center_y - size // 2, size * 2, size + 4
+            )
+            pygame.draw.rect(self.screen, color, folder_rect, 2)
+
+            # Folder tab
+            tab_rect = pygame.Rect(
+                center_x - size, center_y - size - 4, size, size // 2
+            )
+            pygame.draw.rect(self.screen, color, tab_rect, 2)
+
+        elif icon_type == "resign":
+            # White flag icon
+            # Flag pole
+            pole_x = center_x - size
+            pygame.draw.line(
+                self.screen,
+                color,
+                (pole_x, center_y - size),
+                (pole_x, center_y + size),
+                3,
+            )
+
+            # Flag (waving shape)
+            flag_points = [
+                (pole_x, center_y - size),
+                (pole_x + size * 1.5, center_y - size + 4),
+                (pole_x + size * 1.3, center_y - size // 2 + 2),
+                (pole_x + size * 1.5, center_y),
+                (pole_x, center_y - 2),
+            ]
+            pygame.draw.polygon(self.screen, color, flag_points)
+            pygame.draw.polygon(self.screen, color, flag_points, 2)
+
+    def _draw_tooltip(self, button_id: str, mouse_pos: Tuple[int, int]):
+        """
+        Draw tooltip near mouse cursor.
+
+        Args:
+            button_id (str): ID of button to show tooltip for.
+                Valid IDs: "save_pgn", "load_pgn", "resign"
+
+            mouse_pos (Tuple[int, int]): Current mouse position (x, y).
+                Used to position tooltip.
+        """
+        # Get tooltip text from button dictionary
+        tooltip_text = self.buttons[button_id]["tooltip"]
+        text_surface = self.tooltip_font.render(tooltip_text, True, (255, 255, 255))
+
+        # Position tooltip below mouse cursor
+        tooltip_x = mouse_pos[0] - text_surface.get_width() // 2
+        tooltip_y = mouse_pos[1] + 20
+
+        # Create background rectangle
+        padding = 5
+        tooltip_rect = pygame.Rect(
+            tooltip_x - padding,
+            tooltip_y - padding,
+            text_surface.get_width() + padding * 2,
+            text_surface.get_height() + padding * 2,
+        )
+
+        # Draw tooltip background
+        pygame.draw.rect(self.screen, (50, 50, 50), tooltip_rect, border_radius=3)
+        pygame.draw.rect(self.screen, Colors.BORDER, tooltip_rect, 1, border_radius=3)
+
+        # Draw tooltip text
+        self.screen.blit(text_surface, (tooltip_x, tooltip_y))
 
     def handle_click(self, pos: Tuple[int, int]) -> Optional[str]:
         """

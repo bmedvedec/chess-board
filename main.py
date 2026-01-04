@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Chess GUI Application
 ---------------------
@@ -30,7 +29,8 @@ from gui.game_controls import (
 from gui.move_animator import MoveAnimator
 from gui.captured_pieces_display import CapturedPiecesDisplay
 from gui.sound_manager import SoundManager
-from gui.game_clock import GameClock
+from gui.player_clock import PlayerClock
+from gui.time_control_dialog import TimeControlDialog
 from gui.settings_menu import SettingsMenu
 from gui.help_screen import HelpScreen
 from gui.layout_handler import LayoutHandler
@@ -203,6 +203,56 @@ def check_engine_turn_and_move(board_state, engine_controller, move_history):
     return False
 
 
+def reset_game_state(
+    board_state,
+    input_handler,
+    move_history,
+    engine_controller,
+    move_panel,
+    white_clock,
+    black_clock,
+    move_animator,
+    sound_manager,
+    time_control,
+):
+    """
+    Helper function to reset all game state for a new game.
+
+    Args:
+        board_state: BoardState to reset
+        input_handler: InputHandler to reset
+        move_history: List to clear
+        engine_controller: EngineController to cancel
+        move_panel: MoveHistoryPanel to scroll
+        white_clock: White PlayerClock to reset
+        black_clock: Black PlayerClock to reset
+        move_animator: MoveAnimator to cancel
+        sound_manager: SoundManager for sound
+        time_control: Time control in seconds (or None)
+
+    Returns:
+        tuple: (game_ended=False, last_result=None)
+    """
+    board_state.reset()
+    input_handler.reset()
+    move_history.clear()
+    engine_controller.cancel_thinking()
+    move_panel.scroll_to_top()
+
+    # Reset both clocks with time control
+    white_clock.reset(time_control)
+    black_clock.reset(time_control)
+    white_clock.start()
+    black_clock.start()
+    white_clock.activate()
+    white_clock.resume()
+
+    move_animator.cancel()
+    sound_manager.play_game_start_sound()
+
+    return False, None  # game_ended, last_result
+
+
 def main():
     """
     Main application entry point and game loop.
@@ -262,6 +312,8 @@ def main():
         x=Config.GAME_CONTROLS_X,
         y=Config.GAME_CONTROLS_Y,
         width=Config.GAME_CONTROLS_WIDTH,
+        icon_size=Config.GAME_CONTROLS_ICON_SIZE,
+        spacing=Config.GAME_CONTROLS_SPACING,
     )
     pgn_dialog = SimplePGNDialog(screen)
     print("✅ Game state management components initialized")
@@ -273,9 +325,14 @@ def main():
     # Initialize captured pieces display
     captured_display = CapturedPiecesDisplay(
         screen,
-        x=Config.MOVE_HISTORY_X,
-        y=Config.MOVE_HISTORY_Y + Config.MOVE_HISTORY_HEIGHT + 140,
-        width=Config.MOVE_HISTORY_WIDTH,
+        white_x=Config.CAPTURED_PIECES_WHITE_X,
+        white_y=Config.CAPTURED_PIECES_WHITE_Y,
+        white_width=Config.CAPTURED_PIECES_WHITE_WIDTH,
+        white_height=Config.CAPTURED_PIECES_WHITE_HEIGHT,
+        black_x=Config.CAPTURED_PIECES_BLACK_X,
+        black_y=Config.CAPTURED_PIECES_BLACK_Y,
+        black_width=Config.CAPTURED_PIECES_BLACK_WIDTH,
+        black_height=Config.CAPTURED_PIECES_BLACK_HEIGHT,
     )
     print("✅ Captured pieces display initialized")
 
@@ -283,17 +340,47 @@ def main():
     sound_manager = SoundManager()
     print("✅ Sound manager initialized")
 
-    # Initialize game clock
-    game_clock = GameClock(
+    # Ask user to select time control
+    time_control_dialog = TimeControlDialog(screen)
+    selected_time_control = time_control_dialog.show()
+
+    if selected_time_control is None:
+        print("✅ Time control: Unlimited")
+    else:
+        minutes = selected_time_control // 60
+        print(f"✅ Time control: {minutes} minutes per player")
+
+    # Initialize individual player clocks
+    white_clock = PlayerClock(
         screen,
-        x=Config.BOARD_X,
-        y=Config.BOARD_Y + Config.BOARD_SIZE + 20,
-        width=200,
-        use_chess_clock=False,  # Set to True for chess clocks
-        time_control=None,  # Set to seconds (e.g., 300 for 5 min)
+        x=Config.WHITE_CLOCK_X,
+        y=Config.WHITE_CLOCK_Y,
+        width=Config.WHITE_CLOCK_WIDTH,
+        height=Config.WHITE_CLOCK_HEIGHT,
+        player_name="White",
+        player_color=chess.WHITE,
+        time_control=selected_time_control,
     )
-    game_clock.start_game()
-    print("✅ Game clock initialized")
+
+    black_clock = PlayerClock(
+        screen,
+        x=Config.BLACK_CLOCK_X,
+        y=Config.BLACK_CLOCK_Y,
+        width=Config.BLACK_CLOCK_WIDTH,
+        height=Config.BLACK_CLOCK_HEIGHT,
+        player_name="Black",
+        player_color=chess.BLACK,
+        time_control=selected_time_control,
+    )
+
+    # Start both clocks (paused initially)
+    white_clock.start()
+    black_clock.start()
+    # Activate white's clock (white moves first)
+    white_clock.activate()
+    white_clock.resume()
+
+    print("✅ Player clocks initialized")
 
     # Initialize menu and help screens
     settings_menu = SettingsMenu(screen)
@@ -314,6 +401,9 @@ def main():
     # Game state flags
     game_ended = False
     last_result = None
+
+    # Store time control for game resets
+    game_time_control = selected_time_control
 
     # Play game start sound
     sound_manager.play_game_start_sound()
@@ -422,17 +512,18 @@ def main():
 
                 # R key resets the board to starting position
                 elif event.key == pygame.K_r and not game_ended:
-                    board_state.reset()
-                    input_handler.reset()
-                    move_history.clear()
-                    engine_controller.cancel_thinking()
-                    game_ended = False
-                    last_result = None
-                    move_panel.scroll_to_top()
-                    game_clock.reset()
-                    game_clock.start_game()
-                    move_animator.cancel()
-                    sound_manager.play_game_start_sound()
+                    game_ended, last_result = reset_game_state(
+                        board_state,
+                        input_handler,
+                        move_history,
+                        engine_controller,
+                        move_panel,
+                        white_clock,
+                        black_clock,
+                        move_animator,
+                        sound_manager,
+                        game_time_control,
+                    )
                     print("[Action] Board reset")
                     print(f"    Status: {board_state.get_game_status()}")
                     print("\n[Game] New game started")
@@ -523,21 +614,80 @@ def main():
                     x=Config.GAME_CONTROLS_X,
                     y=Config.GAME_CONTROLS_Y,
                     width=Config.GAME_CONTROLS_WIDTH,
+                    icon_size=Config.GAME_CONTROLS_ICON_SIZE,
+                    spacing=Config.GAME_CONTROLS_SPACING,
                 )
                 captured_display = CapturedPiecesDisplay(
                     screen,
-                    x=Config.CAPTURED_PIECES_X,
-                    y=Config.CAPTURED_PIECES_Y,
-                    width=Config.CAPTURED_PIECES_WIDTH,
+                    white_x=Config.CAPTURED_PIECES_WHITE_X,
+                    white_y=Config.CAPTURED_PIECES_WHITE_Y,
+                    white_width=Config.CAPTURED_PIECES_WHITE_WIDTH,
+                    white_height=Config.CAPTURED_PIECES_WHITE_HEIGHT,
+                    black_x=Config.CAPTURED_PIECES_BLACK_X,
+                    black_y=Config.CAPTURED_PIECES_BLACK_Y,
+                    black_width=Config.CAPTURED_PIECES_BLACK_WIDTH,
+                    black_height=Config.CAPTURED_PIECES_BLACK_HEIGHT,
                 )
-                game_clock = GameClock(
+
+                # Recreate player clocks - preserve state from old clocks
+                # Save state before recreating
+                old_white_time = (
+                    white_clock.time_remaining
+                    if hasattr(white_clock, "time_remaining")
+                    else game_time_control
+                )
+                old_black_time = (
+                    black_clock.time_remaining
+                    if hasattr(black_clock, "time_remaining")
+                    else game_time_control
+                )
+                old_white_is_active = (
+                    white_clock.is_active
+                    if hasattr(white_clock, "is_active")
+                    else (board_state.board.turn == chess.WHITE)
+                )
+                old_paused = (
+                    white_clock.paused if hasattr(white_clock, "paused") else True
+                )
+
+                white_clock = PlayerClock(
                     screen,
-                    x=Config.GAME_CLOCK_X,
-                    y=Config.GAME_CLOCK_Y,
-                    width=Config.GAME_CLOCK_WIDTH,
-                    use_chess_clock=False,
-                    time_control=None,
+                    x=Config.WHITE_CLOCK_X,
+                    y=Config.WHITE_CLOCK_Y,
+                    width=Config.WHITE_CLOCK_WIDTH,
+                    height=Config.WHITE_CLOCK_HEIGHT,
+                    player_name="White",
+                    player_color=chess.WHITE,
+                    time_control=game_time_control,
                 )
+
+                black_clock = PlayerClock(
+                    screen,
+                    x=Config.BLACK_CLOCK_X,
+                    y=Config.BLACK_CLOCK_Y,
+                    width=Config.BLACK_CLOCK_WIDTH,
+                    height=Config.BLACK_CLOCK_HEIGHT,
+                    player_name="Black",
+                    player_color=chess.BLACK,
+                    time_control=game_time_control,
+                )
+
+                # Restore clock state
+                if game_time_control is not None:  # Only restore if using time controls
+                    white_clock.time_remaining = old_white_time
+                    black_clock.time_remaining = old_black_time
+                    white_clock.start()  # Initialize
+                    black_clock.start()
+                    if old_white_is_active:
+                        white_clock.activate()
+                    else:
+                        black_clock.activate()
+                    if not old_paused:
+                        if old_white_is_active:
+                            white_clock.resume()
+                        else:
+                            black_clock.resume()
+
                 settings_menu = SettingsMenu(screen)
                 help_screen = HelpScreen(screen)
                 result_dialog = GameResultDialog(screen)
@@ -565,19 +715,54 @@ def main():
                     # Handle New Game button click
                     if button_id == "new_game":
                         print("[Action] New Game button pressed")
-                        board_state.reset()
-                        input_handler.reset()
-                        move_history.clear()
-                        engine_controller.cancel_thinking()
-                        game_ended = False
-                        last_result = None
-                        move_panel.scroll_to_top()
-                        game_clock.reset()
-                        game_clock.start_game()
-                        move_animator.cancel()
-                        sound_manager.play_game_start_sound()
+                        game_ended, last_result = reset_game_state(
+                            board_state,
+                            input_handler,
+                            move_history,
+                            engine_controller,
+                            move_panel,
+                            white_clock,
+                            black_clock,
+                            move_animator,
+                            sound_manager,
+                            game_time_control,
+                        )
 
                         # Check if engine should move first
+                        engine_thinking = check_engine_turn_and_move(
+                            board_state, engine_controller, move_history
+                        )
+
+                    # Handle Change Time Control button
+                    elif button_id == "change_time":
+                        print("[Action] Change Time Control button pressed")
+
+                        # Show time control dialog
+                        new_time_control = time_control_dialog.show()
+
+                        # Update stored time control
+                        game_time_control = new_time_control
+
+                        # Reset game with new time control
+                        game_ended, last_result = reset_game_state(
+                            board_state,
+                            input_handler,
+                            move_history,
+                            engine_controller,
+                            move_panel,
+                            white_clock,
+                            black_clock,
+                            move_animator,
+                            sound_manager,
+                            game_time_control,
+                        )
+
+                        if new_time_control is None:
+                            print(f"[Action] New time control: Unlimited")
+                        else:
+                            minutes = new_time_control // 60
+                            print(f"[Action] New time control: {minutes} minutes")
+
                         engine_thinking = check_engine_turn_and_move(
                             board_state, engine_controller, move_history
                         )
@@ -621,6 +806,10 @@ def main():
                         game_ended = True
                         last_result = ("resignation", winner, "")
 
+                        # Pause both clocks
+                        white_clock.pause()
+                        black_clock.pause()
+
                         # Show result dialog
                         choice = result_dialog.show("resignation", winner, "")
                         if choice == "new_game":
@@ -631,8 +820,12 @@ def main():
                             game_ended = False
                             last_result = None
                             move_panel.scroll_to_top()
-                            game_clock.reset()
-                            game_clock.start_game()
+                            white_clock.reset()
+                            black_clock.reset()
+                            white_clock.start()
+                            black_clock.start()
+                            white_clock.pause()
+                            black_clock.pause()
                             move_animator.cancel()
                             sound_manager.play_game_start_sound()
                             engine_thinking = check_engine_turn_and_move(
@@ -733,8 +926,15 @@ def main():
                                         is_capture=is_capture, is_check=is_check
                                     )
 
-                                # Switch clock turn
-                                game_clock.switch_turn(board_state.board.turn)
+                                # Switch active clock based on whose turn it is
+                                if board_state.board.turn == chess.WHITE:
+                                    white_clock.activate()
+                                    white_clock.resume()
+                                    black_clock.deactivate()
+                                else:
+                                    black_clock.activate()
+                                    black_clock.resume()
+                                    white_clock.deactivate()
 
                             # Check for game end
                             is_over, result_type, winner, reason = (
@@ -744,7 +944,10 @@ def main():
                                 game_ended = True
                                 last_result = (result_type, winner, reason)
                                 sound_manager.play_game_end_sound()
-                                game_clock.pause()
+
+                                # Pause both clocks
+                                white_clock.pause()
+                                black_clock.pause()
 
                                 print(f"[Game] Game over: {result_type}")
                                 if winner:
@@ -762,8 +965,12 @@ def main():
                                     game_ended = False
                                     last_result = None
                                     move_panel.scroll_to_top()
-                                    game_clock.reset()
-                                    game_clock.start_game()
+                                    white_clock.reset()
+                                    black_clock.reset()
+                                    white_clock.start()
+                                    black_clock.start()
+                                    white_clock.pause()
+                                    black_clock.pause()
                                     move_animator.cancel()
                                     sound_manager.play_game_start_sound()
 
@@ -833,8 +1040,15 @@ def main():
                                     is_capture=is_capture, is_check=is_check
                                 )
 
-                            # Switch clock
-                            game_clock.switch_turn(board_state.board.turn)
+                            # Switch active clock
+                            if board_state.board.turn == chess.WHITE:
+                                white_clock.activate()
+                                white_clock.resume()
+                                black_clock.deactivate()
+                            else:
+                                black_clock.activate()
+                                black_clock.resume()
+                                white_clock.deactivate()
 
                             print(f"[Engine] Move made: {move_san} ({move_uci})")
                             print(f"         Status: {board_state.get_game_status()}")
@@ -848,7 +1062,10 @@ def main():
                                 game_ended = True
                                 last_result = (result_type, winner, reason)
                                 sound_manager.play_game_end_sound()
-                                game_clock.pause()
+
+                                # Pause both clocks
+                                white_clock.pause()
+                                black_clock.pause()
 
                                 print(f"[Game] Game over: {result_type}")
                                 if winner:
@@ -866,8 +1083,12 @@ def main():
                                     game_ended = False
                                     last_result = None
                                     move_panel.scroll_to_top()
-                                    game_clock.reset()
-                                    game_clock.start_game()
+                                    white_clock.reset()
+                                    black_clock.reset()
+                                    white_clock.start()
+                                    black_clock.start()
+                                    white_clock.pause()
+                                    black_clock.pause()
                                     move_animator.cancel()
                                     sound_manager.play_game_start_sound()
 
@@ -881,6 +1102,100 @@ def main():
 
                 except Exception as e:
                     print(f"[Engine] ❌ Error applying move: {e}")
+
+        # Check for time expiration (optional - only if using timed games)
+        if not game_ended:
+            if white_clock.is_time_expired():
+                # White ran out of time - check if Black can win
+
+                # Check if Black has insufficient material to deliver checkmate
+                if board_state.board.has_insufficient_material(chess.BLACK):
+                    # Draw - Black cannot checkmate even with infinite time
+                    game_ended = True
+                    last_result = ("draw", None, "insufficient material")
+                    sound_manager.play_game_end_sound()
+                    white_clock.pause()
+                    black_clock.pause()
+
+                    print(
+                        "[Game] Time forfeit, but draw - Black has insufficient mating material"
+                    )
+                    choice = result_dialog.show("draw", None, "insufficient material")
+                else:
+                    # Black wins on time
+                    game_ended = True
+                    last_result = ("time_forfeit", "Black", "White ran out of time")
+                    sound_manager.play_game_end_sound()
+                    white_clock.pause()
+                    black_clock.pause()
+
+                    print("[Game] Time expired: White ran out of time - Black wins")
+                    choice = result_dialog.show(
+                        "time_forfeit", "Black", "White ran out of time"
+                    )
+
+                if choice == "new_game":
+                    game_ended, last_result = reset_game_state(
+                        board_state,
+                        input_handler,
+                        move_history,
+                        engine_controller,
+                        move_panel,
+                        white_clock,
+                        black_clock,
+                        move_animator,
+                        sound_manager,
+                        game_time_control,
+                    )
+                    engine_thinking = check_engine_turn_and_move(
+                        board_state, engine_controller, move_history
+                    )
+
+            elif black_clock.is_time_expired():
+                # Black ran out of time - check if White can win
+
+                # Check if White has insufficient material to deliver checkmate
+                if board_state.board.has_insufficient_material(chess.WHITE):
+                    # Draw - White cannot checkmate even with infinite time
+                    game_ended = True
+                    last_result = ("draw", None, "insufficient material")
+                    sound_manager.play_game_end_sound()
+                    white_clock.pause()
+                    black_clock.pause()
+
+                    print(
+                        "[Game] Time forfeit, but draw - White has insufficient mating material"
+                    )
+                    choice = result_dialog.show("draw", None, "insufficient material")
+                else:
+                    # White wins on time
+                    game_ended = True
+                    last_result = ("time_forfeit", "White", "Black ran out of time")
+                    sound_manager.play_game_end_sound()
+                    white_clock.pause()
+                    black_clock.pause()
+
+                    print("[Game] Time expired: Black ran out of time - White wins")
+                    choice = result_dialog.show(
+                        "time_forfeit", "White", "Black ran out of time"
+                    )
+
+                if choice == "new_game":
+                    game_ended, last_result = reset_game_state(
+                        board_state,
+                        input_handler,
+                        move_history,
+                        engine_controller,
+                        move_panel,
+                        white_clock,
+                        black_clock,
+                        move_animator,
+                        sound_manager,
+                        game_time_control,
+                    )
+                    engine_thinking = check_engine_turn_and_move(
+                        board_state, engine_controller, move_history
+                    )
 
         move_animator.update()
 
@@ -951,8 +1266,9 @@ def main():
         if Config.SHOW_CAPTURED_PIECES:
             captured_display.draw(board_state.board)
 
-        # Draw game clock
-        game_clock.draw(board_state.board.turn)
+        # Draw player clocks
+        white_clock.draw()
+        black_clock.draw()
 
         # Calculate current move index for highlighting
         current_move_idx = (

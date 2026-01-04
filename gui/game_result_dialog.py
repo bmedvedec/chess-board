@@ -358,6 +358,17 @@ class GameResultDialog:
             # Fallback to standard color if winner not specified (shouldn't happen)
             color = Colors.WIN_COLOR if winner else Colors.COORDINATE_TEXT
 
+        # Time forfeit - one player ran out of time
+        elif result_type == "time_forfeit":
+            # Announce winner
+            title = f"{winner} Wins!"
+
+            # Explain victory was by time forfeit
+            message = reason if reason else "Victory on time"
+
+            # Use victory color
+            color = Colors.WIN_COLOR if winner else Colors.COORDINATE_TEXT
+
         # Fallback for unknown result types (shouldn't happen in normal use)
         else:
             # Generic game over message

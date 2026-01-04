@@ -6,7 +6,6 @@ for the chess application. It ensures a responsive user interface that adapts
 to different window sizes while maintaining proper proportions and visual hierarchy.
 """
 
-import pygame
 from utils.config import Config
 
 
@@ -95,46 +94,51 @@ class LayoutHandler:
 
         # Update Config with board position
         setattr(Config, "BOARD_X", max(20, board_x))
-        setattr(Config, "BOARD_Y", max(60, board_y))
+        setattr(Config, "BOARD_Y", max(70, board_y))
 
         # Update panel positions (fixed distance from board)
         # All panels share the same x-coordinate (aligned vertically)
         panel_x = board_x + new_board_size + fixed_margin
 
-        # Move history panel (top panel)
+        # Move history (full board height)
         setattr(Config, "MOVE_HISTORY_X", panel_x)
-        setattr(Config, "MOVE_HISTORY_Y", board_y)
+        setattr(Config, "MOVE_HISTORY_Y", Config.BOARD_Y)
         setattr(Config, "MOVE_HISTORY_WIDTH", self.panel_width)
+        setattr(Config, "MOVE_HISTORY_HEIGHT", new_board_size)
 
-        # Height scales slightly with window size
-        setattr(
-            Config, "MOVE_HISTORY_HEIGHT", min(340, max(250, (new_height - 400) // 2))
-        )
-
-        # Game controls panel (below move history)
+        # Game controls (top-right)
         setattr(Config, "GAME_CONTROLS_X", panel_x)
-        setattr(
-            Config,
-            "GAME_CONTROLS_Y",
-            Config.MOVE_HISTORY_Y + Config.MOVE_HISTORY_HEIGHT + 10,
-        )
+        setattr(Config, "GAME_CONTROLS_Y", 10)
         setattr(Config, "GAME_CONTROLS_WIDTH", self.panel_width)
 
-        # Captured pieces display (below game controls)
-        if hasattr(Config, "CAPTURED_PIECES_X"):
-            setattr(Config, "CAPTURED_PIECES_X", panel_x)
-            setattr(Config, "CAPTURED_PIECES_Y", Config.GAME_CONTROLS_Y + 140)
-            setattr(Config, "CAPTURED_PIECES_WIDTH", self.panel_width)
+        # Calculate widths for captured pieces and clocks
+        captured_width = int(new_board_size * 0.6)
+        clock_width = new_board_size - captured_width - 10
 
-        # Game clock (below board, centered horizontally under board)
-        if hasattr(Config, "GAME_CLOCK_X"):
-            clock_x = Config.BOARD_X + (Config.BOARD_SIZE - 200) // 2
-            setattr(Config, "GAME_CLOCK_X", clock_x)
+        # Captured pieces - white (above board, left side)
+        setattr(Config, "CAPTURED_PIECES_WHITE_X", Config.BOARD_X)
+        setattr(Config, "CAPTURED_PIECES_WHITE_Y", 10)
+        setattr(Config, "CAPTURED_PIECES_WHITE_WIDTH", captured_width)
+        setattr(Config, "CAPTURED_PIECES_WHITE_HEIGHT", 50)
 
-            setattr(Config, "GAME_CLOCK_Y", Config.BOARD_Y + Config.BOARD_SIZE + 20)
-            setattr(Config, "GAME_CLOCK_WIDTH", 200)
+        # White's clock (below board, right side)
+        setattr(Config, "WHITE_CLOCK_X", Config.BOARD_X + captured_width + 10)
+        setattr(Config, "WHITE_CLOCK_Y", Config.BOARD_Y + new_board_size + 10)
+        setattr(Config, "WHITE_CLOCK_WIDTH", clock_width)
+        setattr(Config, "WHITE_CLOCK_HEIGHT", 50)
 
-        # Layout update successful
+        # Captured pieces - black (below board, left side)
+        setattr(Config, "CAPTURED_PIECES_BLACK_X", Config.BOARD_X)
+        setattr(Config, "CAPTURED_PIECES_BLACK_Y", Config.BOARD_Y + new_board_size + 10)
+        setattr(Config, "CAPTURED_PIECES_BLACK_WIDTH", captured_width)
+        setattr(Config, "CAPTURED_PIECES_BLACK_HEIGHT", 50)
+
+        # Black's clock (above board, right side)
+        setattr(Config, "BLACK_CLOCK_X", Config.BOARD_X + captured_width + 10)
+        setattr(Config, "BLACK_CLOCK_Y", 10)
+        setattr(Config, "BLACK_CLOCK_WIDTH", clock_width)
+        setattr(Config, "BLACK_CLOCK_HEIGHT", 50)
+
         return True
 
     def reset_to_default(self):

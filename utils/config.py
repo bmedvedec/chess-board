@@ -53,22 +53,46 @@ class Config:
     MOVE_HISTORY_X = BOARD_X + BOARD_SIZE + SIDE_PANEL_MARGIN
     MOVE_HISTORY_Y = BOARD_Y
     MOVE_HISTORY_WIDTH = SIDE_PANEL_WIDTH
-    MOVE_HISTORY_HEIGHT = 340
+    MOVE_HISTORY_HEIGHT = BOARD_SIZE
 
-    # Game controls panel - below move history
+    # Game controls panel - top-right corner with icon buttons
     GAME_CONTROLS_X = MOVE_HISTORY_X
-    GAME_CONTROLS_Y = MOVE_HISTORY_Y + MOVE_HISTORY_HEIGHT + 10
+    GAME_CONTROLS_Y = 10
     GAME_CONTROLS_WIDTH = SIDE_PANEL_WIDTH
+    GAME_CONTROLS_ICON_SIZE = 50
+    GAME_CONTROLS_SPACING = 10
+    GAME_CONTROLS_USE_ICONS = True
 
-    # Captured pieces display - below game controls
-    CAPTURED_PIECES_X = MOVE_HISTORY_X
-    CAPTURED_PIECES_Y = GAME_CONTROLS_Y + 150
-    CAPTURED_PIECES_WIDTH = SIDE_PANEL_WIDTH
+    # Captured pieces display - split into two sections with individual clocks
+    # Each section: captured pieces on left, player clock on right
 
-    # Game clock - below board (optional)
-    GAME_CLOCK_X = BOARD_X
-    GAME_CLOCK_Y = BOARD_Y + BOARD_SIZE + 30
-    GAME_CLOCK_WIDTH = 200
+    # Captured pieces take ~60% of board width, clock takes remaining space
+    CAPTURED_PIECES_WIDTH = int(BOARD_SIZE * 0.7)
+    PLAYER_CLOCK_WIDTH = BOARD_SIZE - CAPTURED_PIECES_WIDTH - 10
+
+    # White's captured pieces - above the board
+    CAPTURED_PIECES_WHITE_X = BOARD_X
+    CAPTURED_PIECES_WHITE_Y = 10
+    CAPTURED_PIECES_WHITE_WIDTH = CAPTURED_PIECES_WIDTH
+    CAPTURED_PIECES_WHITE_HEIGHT = 50
+
+    # White's clock - BELOW the board (right side, next to captured pieces)
+    WHITE_CLOCK_X = BOARD_X + CAPTURED_PIECES_WIDTH + 10
+    WHITE_CLOCK_Y = BOARD_Y + BOARD_SIZE + 10
+    WHITE_CLOCK_WIDTH = PLAYER_CLOCK_WIDTH
+    WHITE_CLOCK_HEIGHT = 50
+
+    # Black's captured pieces - below the board
+    CAPTURED_PIECES_BLACK_X = BOARD_X
+    CAPTURED_PIECES_BLACK_Y = BOARD_Y + BOARD_SIZE + 10
+    CAPTURED_PIECES_BLACK_WIDTH = CAPTURED_PIECES_WIDTH
+    CAPTURED_PIECES_BLACK_HEIGHT = 50
+
+    # Black's clock - ABOVE the board (right side, next to captured pieces)
+    BLACK_CLOCK_X = BOARD_X + CAPTURED_PIECES_WIDTH + 10
+    BLACK_CLOCK_Y = 10
+    BLACK_CLOCK_WIDTH = PLAYER_CLOCK_WIDTH
+    BLACK_CLOCK_HEIGHT = 50
 
     # ===================
     # Player Settings
