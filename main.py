@@ -22,7 +22,6 @@ from gui.game_result_dialog import GameResultDialog
 from gui.move_history_panel import MoveHistoryPanel
 from gui.game_controls import (
     GameControls,
-    SimplePGNDialog,
     save_pgn_to_file,
     load_pgn_from_file,
 )
@@ -440,7 +439,6 @@ def main():
         icon_size=Config.GAME_CONTROLS_ICON_SIZE,
         spacing=Config.GAME_CONTROLS_SPACING,
     )
-    pgn_dialog = SimplePGNDialog(screen)
     print("✅ Game state management components initialized")
 
     # Initialize move animator
@@ -679,48 +677,6 @@ def main():
 
                         input_handler.reset()
 
-                elif event.key == pygame.K_s:
-                    # Save game shortcut
-                    if len(board_state.board.move_stack) > 0:
-                        filename = pgn_dialog.show_save_dialog()
-                        if filename:
-                            pgn_string = board_state.to_pgn()
-                            if save_pgn_to_file(pgn_string, filename):
-                                print(f"[Action] ✅ Game saved to: {filename}")
-                            else:
-                                print(f"[Action] ❌ Failed to save game")
-
-                elif event.key == pygame.K_l:
-                    # Load game shortcut
-                    filename = pgn_dialog.show_load_dialog()
-                    if filename:
-                        pgn_string = load_pgn_from_file(filename)
-                        if pgn_string:
-                            try:
-                                # Cancel any engine thinking
-                                engine_controller.cancel_thinking()
-
-                                # Load the game
-                                board_state = BoardState.from_pgn(pgn_string)
-                                input_handler.board_state = board_state
-                                input_handler.reset()
-                                move_history = board_state.get_move_history_uci()
-                                game_ended = False
-                                last_result = None
-                                move_panel.scroll_to_bottom()
-
-                                print(f"[Action] ✅ Game loaded from: {filename}")
-                                print(f"    Moves: {len(move_history)}")
-                                print(f"    Status: {board_state.get_game_status()}")
-
-                                # Check if engine should move
-                                engine_thinking = check_engine_turn_and_move(
-                                    board_state, engine_controller, move_history
-                                )
-
-                            except Exception as e:
-                                print(f"[Action] ❌ Failed to load game: {e}")
-
             # Window resize handler
             elif event.type == pygame.VIDEORESIZE:
                 # Update layout
@@ -869,17 +825,17 @@ def main():
                     # Handle save button click
                     if button_id == "save_pgn":
                         if len(board_state.board.move_stack) > 0:
-                            filename = pgn_dialog.show_save_dialog()
-                            if filename:
+                            filepath = game_controls.show_save_dialog()
+                            if filepath:
                                 pgn_string = board_state.to_pgn()
-                                if save_pgn_to_file(pgn_string, filename):
-                                    print(f"[Action] ✅ Game saved to: {filename}")
+                                if save_pgn_to_file(pgn_string, filepath):
+                                    print(f"[Action] ✅ Game saved to: {filepath}")
 
                     # Handle load button click
                     elif button_id == "load_pgn":
-                        filename = pgn_dialog.show_load_dialog()
-                        if filename:
-                            pgn_string = load_pgn_from_file(filename)
+                        filepath = game_controls.show_load_dialog()
+                        if filepath:
+                            pgn_string = load_pgn_from_file(filepath)
                             if pgn_string:
                                 try:
                                     new_state = BoardState.from_pgn(pgn_string)
@@ -889,7 +845,7 @@ def main():
                                     move_panel.scroll_to_bottom()
                                     game_ended = False
                                     last_result = None
-                                    print(f"[Action] ✅ Game loaded: {filename}")
+                                    print(f"[Action] ✅ Game loaded: {filepath}")
                                 except Exception as e:
                                     print(f"[Action] ❌ Failed to load: {e}")
 

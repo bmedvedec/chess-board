@@ -125,17 +125,13 @@ class HelpScreen:
         running = True
 
         while running:
-            # =================================================================
-            # PHASE 1: Draw Overlay Background
-            # =================================================================
+            # -------------------- Draw Overlay Background --------------------
 
             # Draw semi-transparent overlay over game
             # Darkens everything except help panel for focus
             self.screen.blit(overlay, (0, 0))
 
-            # =================================================================
-            # PHASE 2: Draw Help Panel Background
-            # =================================================================
+            # -------------------- Draw Help Panel Background --------------------
 
             # Create rectangle for help panel
             menu_rect = pygame.Rect(
@@ -150,9 +146,7 @@ class HelpScreen:
             # 3px border defines panel boundaries
             pygame.draw.rect(self.screen, Colors.BORDER, menu_rect, 3, border_radius=10)
 
-            # =================================================================
-            # PHASE 3: Draw Title
-            # =================================================================
+            # -------------------- Draw Title --------------------
 
             # Render main title "Help & Instructions"
             title = self.title_font.render("Help & Instructions", True, (255, 255, 255))
@@ -165,9 +159,7 @@ class HelpScreen:
             # Draw title
             self.screen.blit(title, title_rect)
 
-            # =================================================================
-            # PHASE 4: Draw Separator Line
-            # =================================================================
+            # -------------------- Draw Separator Line --------------------
 
             # Draw horizontal line below title
             # Separates title from content sections
@@ -182,17 +174,13 @@ class HelpScreen:
                 2,  # Line thickness
             )
 
-            # =================================================================
-            # PHASE 5: Draw Help Content (Scrollable)
-            # =================================================================
+            # -------------------- Draw Help Content (Scrollable) --------------------
 
             # Draw all help sections with current scroll offset
             # Content may extend beyond visible area (handled by clipping)
             self._draw_content()
 
-            # =================================================================
-            # PHASE 6: Draw Close Button
-            # =================================================================
+            # -------------------- Draw Close Button --------------------
 
             # Get current mouse position for hover detection
             mouse_pos = pygame.mouse.get_pos()
@@ -224,16 +212,12 @@ class HelpScreen:
             # Draw button text
             self.screen.blit(close_text, close_rect)
 
-            # =================================================================
-            # PHASE 7: Update Display
-            # =================================================================
+            # -------------------- Update Display --------------------
 
             # Flip display buffers to show rendered frame
             pygame.display.flip()
 
-            # =================================================================
-            # PHASE 8: Event Processing
-            # =================================================================
+            # -------------------- Event Processing --------------------
 
             # Process all pending events
             for event in pygame.event.get():
@@ -302,7 +286,7 @@ class HelpScreen:
         # Content outside this rect is automatically clipped
         self.screen.set_clip(clip_rect)
 
-        # -------------------- Section 1: How to Play --------------------
+        # -------------------- How to Play --------------------
 
         # Draw section header and get new Y position
         y = self._draw_section("How to Play", content_x, y)
@@ -318,7 +302,7 @@ class HelpScreen:
         # Add vertical spacing before next section
         y += 15
 
-        # -------------------- Section 2: Keyboard Shortcuts --------------------
+        # -------------------- Keyboard Shortcuts --------------------
 
         # Draw section header
         y = self._draw_section("Keyboard Shortcuts", content_x, y)
@@ -343,7 +327,7 @@ class HelpScreen:
         # Add vertical spacing before next section
         y += 15
 
-        # -------------------- Section 3: Visual Indicators --------------------
+        # -------------------- Visual Indicators --------------------
 
         # Draw section header
         y = self._draw_section("Visual Indicators", content_x, y)
@@ -358,7 +342,7 @@ class HelpScreen:
         # Add vertical spacing before next section
         y += 15
 
-        # -------------------- Section 4: Game Controls --------------------
+        # -------------------- Game Controls --------------------
 
         # Draw section header
         y = self._draw_section("Game Controls", content_x, y)
@@ -373,7 +357,7 @@ class HelpScreen:
         # Add vertical spacing before next section
         y += 15
 
-        # -------------------- Section 5: Features --------------------
+        # -------------------- Features --------------------
 
         # Draw section header
         y = self._draw_section("Features", content_x, y)

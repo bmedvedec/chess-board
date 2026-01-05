@@ -15,6 +15,8 @@ from typing import Optional, Tuple
 from datetime import datetime
 from gui.colors import Colors
 from utils.config import Config
+import tkinter as tk
+from tkinter import filedialog
 
 
 class GameControls:
@@ -81,6 +83,25 @@ class GameControls:
         self.hover_button = None
         self.hover_time = 0
         self.tooltip_delay = 30  # Frames before showing tooltip
+
+        # Initialize tkinter root (hidden) for file dialogs
+        self._init_tk_root()
+
+    def _init_tk_root(self):
+        """
+        Initialize hidden tkinter root window for file dialogs.
+
+        This creates a Tk root that remains hidden but allows us to
+        use native file dialogs without showing a tkinter window.
+        """
+        try:
+            self.tk_root = tk.Tk()
+            self.tk_root.withdraw()  # Hide the root window
+            self.tk_root.attributes("-topmost", True)  # Keep dialogs on top
+            print("[GameControls] Tkinter initialized for file dialogs")
+        except Exception as e:
+            print(f"[GameControls] ⚠️ Failed to initialize tkinter: {e}")
+            self.tk_root = None
 
     def _load_icons(self):
         """
@@ -315,307 +336,100 @@ class GameControls:
         if button_id in self.buttons:
             self.buttons[button_id]["enabled"] = enabled
 
-
-class SimplePGNDialog:
-    """
-    Modal dialog for PGN file save/load operations with text input.
-
-    This class provides a simple text-based file dialog for entering filenames
-    when saving or loading chess games in PGN format.
-    """
-
-    def __init__(self, screen: pygame.Surface):
-        """
-        Initialize PGN dialog with centered layout.
-
-        Calculates positions for all dialog elements (title, input field,
-        buttons) based on screen dimensions to center the dialog.
-
-        Args:
-            screen (pygame.Surface): Main pygame display surface.
-                Used to determine screen size for centering and for rendering.
-        """
-        # Store screen reference for rendering
-        self.screen = screen
-
-        # Dialog box dimensions
-        self.dialog_width = 500
-        self.dialog_height = 200
-
-        # Center dialog on screen
-        self.dialog_x = (screen.get_width() - self.dialog_width) // 2
-        self.dialog_y = (screen.get_height() - self.dialog_height) // 2
-
-        # Create fonts for dialog text
-        self.title_font = pygame.font.SysFont("Arial", 24, bold=True)
-        self.text_font = pygame.font.SysFont("Arial", 18)
-
-        # Text input field rectangle
-        self.input_rect = pygame.Rect(
-            self.dialog_x + 50,
-            self.dialog_y + 80,
-            self.dialog_width - 100,
-            40,
-        )
-
-        # Button positioning
-        button_y = self.dialog_y + 140
-
-        # OK button: Left of center
-        self.ok_button = pygame.Rect(self.dialog_x + 100, button_y, 120, 40)
-
-        # Cancel button: Right of center
-        self.cancel_button = pygame.Rect(self.dialog_x + 280, button_y, 120, 40)
-
     def show_save_dialog(self, default_name: Optional[str] = None) -> Optional[str]:
         """
-        Show modal dialog to get filename for saving current game.
+        Show native OS save file dialog to get save location.
 
-        Displays a text input dialog with a suggested filename based on current
-        timestamp. User can accept the suggestion, modify it, or cancel.
+        Opens the system's native file save dialog (Windows Explorer on Windows,
+        Finder on Mac, etc.) allowing the user to choose where to save the game.
 
         Args:
-            default_name (Optional[str], optional): Custom default filename.
-                If None, auto-generates timestamp-based name like:
-                "chess_game_20250115_143022.pgn"
+            default_name (Optional[str], optional): Default filename suggestion.
+                If None, auto-generates timestamp-based name.
                 Defaults to None.
 
         Returns:
-            Optional[str]: Filename entered by user (without directory path).
-                - "my_game.pgn": User confirmed with filename
-                - None: User cancelled (pressed Cancel or Escape)
+            Optional[str]: Full file path selected by user, or None if cancelled.
+                Example: "C:/Users/Username/Documents/my_game.pgn"
         """
-        # Generate timestamp-based default if none provided
-        if default_name is None:
-            # Format: chess_game_YYYYMMDD_HHMMSS.pgn
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            default_name = f"chess_game_{timestamp}.pgn"
+        if self.tk_root is None:
+            print("[GameControls] ⚠️ Tkinter not available, cannot show file dialog")
+            return None
 
-        # Show input dialog with "Save Game" title
-        return self._show_input_dialog("Save Game", "Filename:", default_name)
+        try:
+            # Generate default filename if not provided
+            if default_name is None:
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                default_name = f"chess_game_{timestamp}.pgn"
+
+            # Ensure .pgn extension
+            if not default_name.endswith(".pgn"):
+                default_name += ".pgn"
+
+            # Get user's documents folder as initial directory
+            initial_dir = os.path.expanduser("~/Documents")
+            if not os.path.exists(initial_dir):
+                initial_dir = os.path.expanduser("~")
+
+            # Show native save dialog
+            filepath = filedialog.asksaveasfilename(
+                parent=self.tk_root,
+                title="Save Chess Game",
+                initialdir=initial_dir,
+                initialfile=default_name,
+                defaultextension=".pgn",
+                filetypes=[("PGN files", "*.pgn"), ("All files", "*.*")],
+            )
+
+            # Process tkinter events to ensure dialog closes properly
+            self.tk_root.update()
+
+            # Return filepath (or None if user cancelled)
+            return filepath if filepath else None
+
+        except Exception as e:
+            print(f"[GameControls] ❌ Error showing save dialog: {e}")
+            return None
 
     def show_load_dialog(self) -> Optional[str]:
         """
-        Show modal dialog to get filename for loading saved game.
+        Show native OS open file dialog to select game to load.
+
+        Opens the system's native file open dialog allowing the user to browse
+        and select a PGN file from any location on their computer.
 
         Returns:
-            Optional[str]: Filename entered by user (without directory path).
-                - "my_game.pgn": User confirmed with filename
-                - None: User cancelled (pressed Cancel or Escape)
+            Optional[str]: Full file path selected by user, or None if cancelled.
+                Example: "C:/Users/Username/Downloads/saved_game.pgn"
         """
-        # Show input dialog with "Load Game" title and empty default
-        return self._show_input_dialog("Load Game", "Filename:", "")
+        if self.tk_root is None:
+            print("[GameControls] ⚠️ Tkinter not available, cannot show file dialog")
+            return None
 
-    def _show_input_dialog(
-        self, title: str, prompt: str, default_text: str
-    ) -> Optional[str]:
-        """
-        Display modal text input dialog and block until user responds.
+        try:
+            # Get user's documents folder as initial directory
+            initial_dir = os.path.expanduser("~/Documents")
+            if not os.path.exists(initial_dir):
+                initial_dir = os.path.expanduser("~")
 
-        This is the core dialog rendering method that runs its own event loop,
-        blocking the main game loop until the user either confirms or cancels.
-
-        Args:
-            title (str): Dialog title text displayed at top.
-                Examples: "Save Game", "Load Game"
-
-            prompt (str): Label for input field.
-                Examples: "Filename:", "Enter name:"
-
-            default_text (str): Pre-filled text in input field.
-                User can modify or clear this. Empty string for no default.
-
-        Returns:
-            Optional[str]: User's final input text, or None if cancelled.
-                - "my_game": User pressed OK or Enter with text
-                - "": User pressed OK with empty field (returns empty string, not None)
-                - None: User pressed Cancel, Escape, or closed window
-        """
-        # ==================== Initialize overlay and input state ====================
-
-        # Create semi-transparent black overlay to dim background
-        overlay = pygame.Surface((self.screen.get_width(), self.screen.get_height()))
-        overlay.set_alpha(200)
-        overlay.fill((0, 0, 0))
-
-        # Initialize input field with default text
-        input_text = default_text
-
-        # Cursor blinking state
-        cursor_visible = True
-        cursor_timer = 0
-
-        # ==================== Modal event loop ====================
-
-        running = True
-        while running:
-            # -------------------- Rendering Phase --------------------
-
-            # Draw darkening overlay over entire screen
-            self.screen.blit(overlay, (0, 0))
-
-            # Create rectangle for dialog background
-            dialog_rect = pygame.Rect(
-                self.dialog_x, self.dialog_y, self.dialog_width, self.dialog_height
+            # Show native open dialog
+            filepath = filedialog.askopenfilename(
+                parent=self.tk_root,
+                title="Load Chess Game",
+                initialdir=initial_dir,
+                defaultextension=".pgn",
+                filetypes=[("PGN files", "*.pgn"), ("All files", "*.*")],
             )
 
-            # Fill dialog background
-            pygame.draw.rect(self.screen, Colors.BACKGROUND, dialog_rect)
+            # Process tkinter events to ensure dialog closes properly
+            self.tk_root.update()
 
-            # Draw dialog border
-            pygame.draw.rect(self.screen, Colors.BORDER, dialog_rect, 3)
+            # Return filepath (or None if user cancelled)
+            return filepath if filepath else None
 
-            # Render title text
-            title_surface = self.title_font.render(title, True, Colors.COORDINATE_TEXT)
-
-            # Center title horizontally
-            title_rect = title_surface.get_rect(
-                centerx=self.dialog_x + self.dialog_width // 2, y=self.dialog_y + 20
-            )
-
-            # Draw title
-            self.screen.blit(title_surface, title_rect)
-
-            # Render prompt text
-            prompt_surface = self.text_font.render(prompt, True, Colors.COORDINATE_TEXT)
-
-            prompt_rect = prompt_surface.get_rect(
-                x=self.input_rect.x, y=self.input_rect.y - 25
-            )
-
-            # Draw prompt label
-            self.screen.blit(prompt_surface, prompt_rect)
-
-            # Fill input box with dark gray background
-            pygame.draw.rect(self.screen, (60, 60, 60), self.input_rect)
-
-            # Draw input box border (2px)
-            pygame.draw.rect(self.screen, Colors.COORDINATE_TEXT, self.input_rect, 2)
-
-            # Render current input text in white
-            text_surface = self.text_font.render(input_text, True, (255, 255, 255))
-
-            text_rect = text_surface.get_rect(
-                x=self.input_rect.x + 10, centery=self.input_rect.centery
-            )
-
-            # Draw input text
-            self.screen.blit(text_surface, text_rect)
-
-            # Increment cursor blink timer
-            cursor_timer += 1
-
-            # Toggle cursor visibility every 30 frames (blink effect)
-            if cursor_timer > 30:
-                cursor_visible = not cursor_visible
-                cursor_timer = 0  # Reset timer
-
-            # Only draw cursor when it's in "visible" phase of blink
-            if cursor_visible:
-                # Calculate horizontal cursor position (after text)
-                cursor_x = text_rect.right + 2
-
-                # Calculate vertical cursor position
-                cursor_y1 = self.input_rect.y + 8
-                cursor_y2 = self.input_rect.bottom - 8
-
-                # Draw vertical white line as cursor
-                pygame.draw.line(
-                    self.screen,
-                    (255, 255, 255),
-                    (cursor_x, cursor_y1),
-                    (cursor_x, cursor_y2),
-                    2,
-                )
-
-            # Get current mouse position for hover detection
-            mouse_pos = pygame.mouse.get_pos()
-
-            # OK Button
-            # Check if mouse is hovering over OK button
-            ok_hover = self.ok_button.collidepoint(mouse_pos)
-            # Use hover color if hovering, normal color otherwise
-            ok_color = Colors.BUTTON_HOVER if ok_hover else Colors.BUTTON_NORMAL
-            # Fill button background
-            pygame.draw.rect(self.screen, ok_color, self.ok_button)
-            # Draw button border
-            pygame.draw.rect(self.screen, Colors.BORDER, self.ok_button, 2)
-            # Render "OK" text
-            ok_text = self.text_font.render("OK", True, Colors.BUTTON_TEXT)
-            # Center text in button
-            ok_text_rect = ok_text.get_rect(center=self.ok_button.center)
-            # Draw button text
-            self.screen.blit(ok_text, ok_text_rect)
-
-            # Cancel Button
-            # Check if mouse is hovering over Cancel button
-            cancel_hover = self.cancel_button.collidepoint(mouse_pos)
-            # Use hover color if hovering, normal color otherwise
-            cancel_color = Colors.BUTTON_HOVER if cancel_hover else Colors.BUTTON_NORMAL
-            # Fill button background
-            pygame.draw.rect(self.screen, cancel_color, self.cancel_button)
-            # Draw button border
-            pygame.draw.rect(self.screen, Colors.BORDER, self.cancel_button, 2)
-            # Render "Cancel" text
-            cancel_text = self.text_font.render("Cancel", True, Colors.BUTTON_TEXT)
-            # Center text in button
-            cancel_text_rect = cancel_text.get_rect(center=self.cancel_button.center)
-            # Draw button text
-            self.screen.blit(cancel_text, cancel_text_rect)
-
-            # Update display with all drawn elements
-            pygame.display.flip()
-
-            # -------------------- Event Handling Phase --------------------
-
-            for event in pygame.event.get():
-                # Window close event
-                if event.type == pygame.QUIT:
-                    # User closed window - treat as cancel
-                    return None
-
-                # Key press event
-                elif event.type == pygame.KEYDOWN:
-                    # Enter key: Confirm and return input
-                    if event.key == pygame.K_RETURN:
-                        # Return input text, or None if empty
-                        return input_text if input_text else None
-
-                    # Escape key: Cancel and return None
-                    elif event.key == pygame.K_ESCAPE:
-                        return None
-
-                    # Backspace: Delete last character
-                    elif event.key == pygame.K_BACKSPACE:
-                        # String slicing removes last character
-                        # If input_text is empty, slicing has no effect
-                        input_text = input_text[:-1]
-
-                    # All other keys: Attempt to add character
-                    else:
-                        # Check if key produces a printable character
-                        if event.unicode and event.unicode.isprintable():
-                            # Enforce maximum filename length
-                            if len(input_text) < 50:
-                                # Append character to input string
-                                input_text += event.unicode
-
-                # Mouse click event
-                elif event.type == pygame.MOUSEBUTTONDOWN:
-                    # Only handle left mouse button
-                    if event.button == 1:
-                        # Check if OK button was clicked
-                        if self.ok_button.collidepoint(event.pos):
-                            # Return input text, or None if empty
-                            return input_text if input_text else None
-
-                        # Check if Cancel button was clicked
-                        elif self.cancel_button.collidepoint(event.pos):
-                            # Cancel operation - return None
-                            return None
-
-        # Fallback return None (should not reach here)
-        return None
+        except Exception as e:
+            print(f"[GameControls] ❌ Error showing load dialog: {e}")
+            return None
 
 
 # =============================================================================
