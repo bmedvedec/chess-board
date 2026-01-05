@@ -34,6 +34,7 @@ from gui.time_control_dialog import TimeControlDialog
 from gui.settings_menu import SettingsMenu
 from gui.help_screen import HelpScreen
 from gui.layout_handler import LayoutHandler
+from gui.color_selection_dialog import ColorSelectionDialog
 
 from engine.engine_wrapper import (
     initialize_engine as init_engine_wrapper,
@@ -349,6 +350,23 @@ def main():
     else:
         minutes = selected_time_control // 60
         print(f"✅ Time control: {minutes} minutes per player")
+
+    # Show color selection dialog
+    color_selection_dialog = ColorSelectionDialog(screen)
+    selected_color = color_selection_dialog.show()
+
+    # Update Config with selected color
+    setattr(Config, "HUMAN_COLOR", selected_color)
+    setattr(Config, "ENGINE_COLOR", "black" if selected_color == "white" else "white")
+
+    # Flip board when playing as Black
+    if selected_color == "black":
+        setattr(Config, "FLIP_BOARD", True)
+    else:
+        setattr(Config, "FLIP_BOARD", False)
+
+    print(f"✅ Color selected: Human plays as {selected_color.upper()}")
+    print(f"   Engine plays as {Config.ENGINE_COLOR.upper()}")
 
     # Initialize individual player clocks
     white_clock = PlayerClock(
