@@ -16,7 +16,8 @@ class TimeControlDialog:
     Features:
     - Custom time input at top (1-999 minutes)
     - 2-column layout for preset options
-    - Common presets: 3, 5, 10, 15, 30 min + Unlimited
+    - Multiple presets including bullet, blitz, rapid, classical, and long time controls
+    - Dynamic repositioning on window resize
     """
 
     def __init__(self, screen: pygame.Surface):
@@ -30,45 +31,30 @@ class TimeControlDialog:
 
         # Dialog dimensions
         self.dialog_width = 600
-        self.dialog_height = 500
-
-        # Center on screen
-        self.dialog_x = (screen.get_width() - self.dialog_width) // 2
-        self.dialog_y = (screen.get_height() - self.dialog_height) // 2
+        self.dialog_height = 520
 
         # Fonts
         self.title_font = pygame.font.SysFont("Arial", 32, bold=True)
         self.button_font = pygame.font.SysFont("Arial", 18, bold=True)
         self.desc_font = pygame.font.SysFont("Arial", 14)
         self.input_font = pygame.font.SysFont("Arial", 20)
+        self.label_font = pygame.font.SysFont("Arial", 14)
 
         # Custom input state
         self.custom_input = ""
         self.input_active = False
 
-        # Custom input box
-        self.input_box = pygame.Rect(
-            self.dialog_x + 150,
-            self.dialog_y + 90,
-            120,
-            40,
-        )
-
-        # "Start" button for custom input
-        self.start_button = pygame.Rect(
-            self.dialog_x + 280,
-            self.dialog_y + 90,
-            100,
-            40,
-        )
-
         # Time control preset options (seconds, display name, description)
         self.options = [
+            (60, "1 min", "Bullet"),
             (180, "3 min", "Blitz"),
             (300, "5 min", "Blitz"),
             (600, "10 min", "Rapid"),
             (900, "15 min", "Rapid"),
             (1800, "30 min", "Classical"),
+            (3600, "1 hour", "Classical"),
+            (5400, "1h 30min", "Classical"),
+            (86400, "1 day", "Correspondence"),
             (None, "Unlimited", "No limit"),
         ]
 
@@ -78,9 +64,40 @@ class TimeControlDialog:
         self.button_spacing = 15
         self.column_spacing = 20
 
+        print("[TimeControlDialog] Initialized")
+
+    def _calculate_positions(self):
+        """
+        Calculate dialog and UI element positions based on current screen size.
+        Called every frame to handle window resizing.
+        """
+        # Get current screen dimensions
+        screen_width = self.screen.get_width()
+        screen_height = self.screen.get_height()
+
+        # Center dialog on current screen
+        self.dialog_x = (screen_width - self.dialog_width) // 2
+        self.dialog_y = (screen_height - self.dialog_height) // 2
+
+        # Custom input box
+        self.input_box = pygame.Rect(
+            self.dialog_x + 200,
+            self.dialog_y + 100,
+            120,
+            40,
+        )
+
+        # "Start" button for custom input
+        self.start_button = pygame.Rect(
+            self.dialog_x + 330,
+            self.dialog_y + 100,
+            100,
+            40,
+        )
+
         # Calculate button positions (2 columns)
         self.buttons = []
-        start_y = self.dialog_y + 160
+        start_y = self.dialog_y + 180
 
         for i, (seconds, name, desc) in enumerate(self.options):
             # Determine column (0 or 1)
@@ -107,6 +124,9 @@ class TimeControlDialog:
 
         running = True
         while running:
+            # Handle window resizing
+            self._calculate_positions()
+
             # Draw overlay
             self.screen.blit(overlay, (0, 0))
 
@@ -137,10 +157,15 @@ class TimeControlDialog:
             )
 
             # Draw "Custom:" label
-            custom_label = self.desc_font.render(
+            custom_label = self.label_font.render(
                 "Custom (minutes):", True, (200, 200, 200)
             )
-            self.screen.blit(custom_label, (self.dialog_x + 40, self.dialog_y + 100))
+            # Position label to the left of input box with proper spacing
+            label_rect = custom_label.get_rect(
+                right=self.input_box.x - 10,
+                centery=self.input_box.centery,
+            )
+            self.screen.blit(custom_label, label_rect)
 
             # Draw custom input box
             input_color = (100, 100, 120) if self.input_active else (60, 60, 60)
@@ -173,8 +198,8 @@ class TimeControlDialog:
             pygame.draw.line(
                 self.screen,
                 Colors.BORDER,
-                (self.dialog_x + 40, self.dialog_y + 145),
-                (self.dialog_x + self.dialog_width - 40, self.dialog_y + 145),
+                (self.dialog_x + 40, self.dialog_y + 160),
+                (self.dialog_x + self.dialog_width - 40, self.dialog_y + 160),
                 2,
             )
 
@@ -214,7 +239,7 @@ class TimeControlDialog:
             # Event handling
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
-                    return None  # Default to unlimited
+                    return None  # Unlimited
 
                 elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_ESCAPE:

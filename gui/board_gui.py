@@ -62,7 +62,7 @@ class BoardGUI:
 
         # Initialize font system for rendering coordinate labels
         pygame.font.init()
-        self.coord_font = pygame.font.SysFont("Arial", 16)
+        self.coord_font = pygame.font.SysFont("Arial", 16, bold=True)
 
         # Log successful initialization with diagnostic information
         print("[BoardGUI] Initialized successfully")
@@ -93,9 +93,9 @@ class BoardGUI:
             for col in range(8):
                 self._draw_square(row, col)
 
-        # Add algebraic notation labels around the board if enabled
+        # Add algebraic notation labels inside squares if enabled
         if Config.SHOW_COORDINATES:
-            self._draw_coordinates()
+            self._draw_coordinates_inside()
 
     def _draw_square(self, row: int, col: int):
         """
@@ -127,6 +127,74 @@ class BoardGUI:
 
         # Render the filled rectangle for this square
         pygame.draw.rect(self.screen, color, (x, y, self.square_size, self.square_size))
+
+    def _draw_coordinates_inside(self):
+        """
+        Render algebraic notation coordinate labels INSIDE the chess board squares.
+
+        - File letters (a-h) appear in bottom-right corner of rank 1 squares (bottom row)
+        - Rank numbers (1-8) appear in top-left corner of a-file squares (leftmost column)
+        - Text color alternates: dark text on light squares, light text on dark squares
+        """
+        # File letters from left to right (a through h)
+        files = "abcdefgh"
+        # Rank numbers from top to bottom (8 down to 1)
+        ranks = "87654321"
+
+        # Handle board flipping for black's perspective
+        if Config.FLIP_BOARD:
+            files = files[::-1]  # Reverse files: h to a
+            ranks = ranks[::-1]  # Reverse ranks: 1 to 8
+
+        # Draw file labels (a-h) in BOTTOM ROW squares
+        # Bottom row = row 7 (rank 1)
+        bottom_row = 7
+        for col, file in enumerate(files):
+            # Calculate square position
+            x = self.board_x + col * self.square_size
+            y = self.board_y + bottom_row * self.square_size
+
+            # Determine if this square is light or dark
+            is_light = (bottom_row + col) % 2 == 0
+
+            # Choose text color: dark text on light squares, light text on dark squares
+            text_color = Colors.DARK_SQUARE if is_light else Colors.LIGHT_SQUARE
+
+            # Render file letter
+            text = self.coord_font.render(file, True, text_color)
+
+            # Position in BOTTOM-RIGHT corner of square
+            # 3px margin from right edge, 3px margin from bottom edge
+            text_x = x + self.square_size - text.get_width() - 3
+            text_y = y + self.square_size - text.get_height() - 3
+
+            # Draw file label
+            self.screen.blit(text, (text_x, text_y))
+
+        # Draw rank labels (1-8) in LEFTMOST COLUMN squares
+        # Leftmost column = col 0 (a-file)
+        left_col = 0
+        for row, rank in enumerate(ranks):
+            # Calculate square position
+            x = self.board_x + left_col * self.square_size
+            y = self.board_y + row * self.square_size
+
+            # Determine if this square is light or dark
+            is_light = (row + left_col) % 2 == 0
+
+            # Choose text color: dark text on light squares, light text on dark squares
+            text_color = Colors.DARK_SQUARE if is_light else Colors.LIGHT_SQUARE
+
+            # Render rank number
+            text = self.coord_font.render(rank, True, text_color)
+
+            # Position in TOP-LEFT corner of square
+            # 3px margin from left edge, 3px margin from top edge
+            text_x = x + 3
+            text_y = y + 3
+
+            # Draw rank label
+            self.screen.blit(text, (text_x, text_y))
 
     def _draw_coordinates(self):
         """
@@ -425,34 +493,3 @@ class BoardGUI:
 
         # Highlight destination square
         self.highlight_square(last_move.to_square, Colors.LAST_MOVE_TO)
-
-    def draw_game_info(self, board: chess.Board):
-        """
-        Render game status information above the chess board.
-
-        Displays whose turn it is to move with appropriate color coding.
-        This provides at-a-glance game state awareness for the player.
-
-        Args:
-            board (chess.Board): Current board state from python-chess
-        """
-        # Determine turn text based on current player
-        turn_text = "White to move" if board.turn == chess.WHITE else "Black to move"
-
-        # Create bold font for visibility
-        font = pygame.font.SysFont("Arial", 24, bold=True)
-
-        # Use different colors to distinguish whose turn it is
-        color = (
-            Colors.WHITE_TO_MOVE if board.turn == chess.WHITE else Colors.BLACK_TO_MOVE
-        )
-
-        # Render the text with appropriate color
-        text_surface = font.render(turn_text, True, color)
-
-        # Center text over the board (not the window)
-        board_center_x = self.board_x + self.square_size * 4  # Center of 8 squares
-        text_rect = text_surface.get_rect(centerx=board_center_x, y=self.board_y - 60)
-
-        # Draw the text to the screen
-        self.screen.blit(text_surface, text_rect)

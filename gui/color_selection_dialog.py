@@ -31,10 +31,6 @@ class ColorSelectionDialog:
         self.dialog_width = 500
         self.dialog_height = 350
 
-        # Center on screen
-        self.dialog_x = (screen.get_width() - self.dialog_width) // 2
-        self.dialog_y = (screen.get_height() - self.dialog_height) // 2
-
         # Fonts
         self.title_font = pygame.font.SysFont("Arial", 32, bold=True)
         self.button_font = pygame.font.SysFont("Arial", 20, bold=True)
@@ -44,6 +40,21 @@ class ColorSelectionDialog:
         self.button_width = 380
         self.button_height = 60
         self.button_spacing = 15
+
+        print("[ColorSelectionDialog] Initialized")
+
+    def _calculate_positions(self):
+        """
+        Calculate dialog and button positions based on current screen size.
+        Called every frame to handle window resizing.
+        """
+        # Get current screen dimensions
+        screen_width = self.screen.get_width()
+        screen_height = self.screen.get_height()
+
+        # Center dialog on current screen
+        self.dialog_x = (screen_width - self.dialog_width) // 2
+        self.dialog_y = (screen_height - self.dialog_height) // 2
 
         # Calculate button positions (centered vertically)
         start_y = self.dialog_y + 100
@@ -92,6 +103,8 @@ class ColorSelectionDialog:
         running = True
         while running:
             # -------------------- Rendering --------------------
+            # Handle window resizing
+            self._calculate_positions()
 
             # Draw overlay
             self.screen.blit(overlay, (0, 0))

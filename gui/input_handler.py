@@ -60,6 +60,9 @@ class InputHandler:
         )
         self.mouse_moved = False  # True if mouse moved since button press
 
+        # Track how the last move was made (for animation decision)
+        self.last_move_method: Optional[str] = None  # "click" or "drag"
+
         print("[InputHandler] Initialized successfully")
 
     def handle_mouse_click(self, pos: Tuple[int, int]) -> bool:
@@ -170,6 +173,9 @@ class InputHandler:
             return self._handle_selection(square, piece)
 
         # Clicking empty square or opponent piece - attempt move
+        # Mark this as a click-to-move method
+        self.last_move_method = "click"
+
         return self._try_make_move(square)
 
     def _try_make_move(self, to_square: chess.Square) -> bool:
@@ -346,7 +352,9 @@ class InputHandler:
                 return False  # Let click handler select the piece
 
             # Attempt to execute the dragged move
-            # This uses the same validation and execution as click-to-move
+            # Mark this as a drag-and-drop method
+            self.last_move_method = "drag"
+
             move_made = self._try_make_move(to_square)
 
             # Clear all drag state
@@ -405,6 +413,25 @@ class InputHandler:
         # This allows the dragged piece to follow the cursor smoothly
         if self.dragging:
             self.drag_pos = pos
+
+    def get_last_move_method(self) -> Optional[str]:
+        """
+        Get the method used for the last move.
+
+        Returns:
+            Optional[str]: "click" if move was made via click-to-move,
+                          "drag" if move was made via drag-and-drop,
+                          None if no move has been made yet
+        """
+        return self.last_move_method
+
+    def clear_move_method(self):
+        """
+        Clear the last move method tracking.
+
+        Should be called after consuming the move method information.
+        """
+        self.last_move_method = None
 
     def render_selection_highlights(self):
         """
@@ -481,5 +508,8 @@ class InputHandler:
         self.drag_pos = None
         self.drag_start_pos = None
         self.mouse_moved = False
+
+        # Clear move method tracking
+        self.last_move_method = None
 
         print("[InputHandler] State reset")

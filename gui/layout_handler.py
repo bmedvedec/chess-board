@@ -112,12 +112,12 @@ class LayoutHandler:
         setattr(Config, "GAME_CONTROLS_WIDTH", self.panel_width)
 
         # Calculate widths for captured pieces and clocks
-        captured_width = int(new_board_size * 0.6)
+        captured_width = int(new_board_size * 0.7)
         clock_width = new_board_size - captured_width - 10
 
         # Captured pieces - white (above board, left side)
         setattr(Config, "CAPTURED_PIECES_WHITE_X", Config.BOARD_X)
-        setattr(Config, "CAPTURED_PIECES_WHITE_Y", 10)
+        setattr(Config, "CAPTURED_PIECES_WHITE_Y", Config.BOARD_Y - 60)
         setattr(Config, "CAPTURED_PIECES_WHITE_WIDTH", captured_width)
         setattr(Config, "CAPTURED_PIECES_WHITE_HEIGHT", 50)
 
@@ -135,7 +135,7 @@ class LayoutHandler:
 
         # Black's clock (above board, right side)
         setattr(Config, "BLACK_CLOCK_X", Config.BOARD_X + captured_width + 10)
-        setattr(Config, "BLACK_CLOCK_Y", 10)
+        setattr(Config, "BLACK_CLOCK_Y", Config.BOARD_Y - 60)
         setattr(Config, "BLACK_CLOCK_WIDTH", clock_width)
         setattr(Config, "BLACK_CLOCK_HEIGHT", 50)
 

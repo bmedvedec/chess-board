@@ -244,12 +244,15 @@ class MoveAnimator:
 
     def is_square_being_animated(self, square: chess.Square) -> bool:
         """
-        Check if a piece from the given square is currently being animated.
+        Check if a square is involved in the current animation.
 
-        This is used by BoardGUI to skip rendering the piece at its source
-        square during animation. Without this check, the piece would appear
-        both at the source square AND at the animated position, creating
-        a duplicate piece visual bug.
+        This checks if the given square is EITHER the source OR destination
+        of the current animation. Both squares should be hidden during animation:
+        - Source square: piece is moving away, shouldn't be rendered there
+        - Destination square: piece hasn't arrived yet, shouldn't be rendered there
+
+        This is used by BoardGUI to skip rendering pieces at both squares during
+        animation. Without this check, pieces would appear in multiple places.
 
         Args:
             square (chess.Square): Square index to check (0-63).
@@ -259,9 +262,11 @@ class MoveAnimator:
                 - True: Piece from this square is being animated (don't render)
                 - False: No animation from this square (render normally)
         """
-        # Check if currently animating AND square matches source square
+        # Check if currently animating AND square is either source OR destination
         # Both conditions must be true to skip rendering
-        return self.is_animating and square == self.from_square
+        return self.is_animating and (
+            square == self.from_square or square == self.to_square
+        )
 
     def cancel(self):
         """

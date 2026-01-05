@@ -957,16 +957,25 @@ def main():
                                 move_history.append(last_move.uci())
                                 move_panel.scroll_to_bottom()
 
-                                # Start move animation
-                                piece_at_dest = board_state.board.piece_at(
-                                    last_move.to_square
-                                )
-                                if piece_at_dest:
-                                    move_animator.start_animation(
-                                        piece_at_dest,
-                                        last_move.from_square,
-                                        last_move.to_square,
+                                # Start move animation ONLY for click-to-move
+                                # Check how the move was made
+                                move_method = input_handler.get_last_move_method()
+
+                                if move_method == "click":
+                                    # Animate click-to-move
+                                    piece_at_dest = board_state.board.piece_at(
+                                        last_move.to_square
                                     )
+                                    if piece_at_dest:
+                                        move_animator.start_animation(
+                                            piece_at_dest,
+                                            last_move.from_square,
+                                            last_move.to_square,
+                                        )
+                                # If move_method == "drag", skip animation
+
+                                # Clear the move method tracking
+                                input_handler.clear_move_method()
 
                                 # Play move sound
                                 is_capture = board_state.board.is_capture(last_move)
@@ -1287,20 +1296,6 @@ def main():
                 and not engine_controller.is_thinking()
             ):
                 input_handler.render_selection_highlights()
-
-        # Draw game info (turn indicator)
-        board_gui.draw_game_info(board_state.board)
-
-        # Draw "thinking" indicator if engine is calculating
-        if engine_controller.is_thinking():
-            font = pygame.font.SysFont("Arial", 24, bold=True)
-            thinking_text = font.render("Engine thinking...", True, (255, 215, 0))
-            text_rect = thinking_text.get_rect(centerx=screen.get_width() // 2, y=20)
-            # Draw background
-            bg_rect = text_rect.inflate(20, 10)
-            pygame.draw.rect(screen, (50, 50, 50), bg_rect)
-            pygame.draw.rect(screen, (255, 215, 0), bg_rect, 2)
-            screen.blit(thinking_text, text_rect)
 
         # Draw pieces (hide piece being animated or dragged)
         for square in chess.SQUARES:

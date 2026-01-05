@@ -54,10 +54,6 @@ class GameResultDialog:
         self.dialog_width = 500
         self.dialog_height = 250
 
-        # Calculate dialog position to center it on the screen
-        self.dialog_x = (screen.get_width() - self.dialog_width) // 2
-        self.dialog_y = (screen.get_height() - self.dialog_height) // 2
-
         # Create fonts for different text elements
         # SysFont uses system fonts for consistent appearance across platforms
 
@@ -74,6 +70,21 @@ class GameResultDialog:
         self.button_width = 150
         self.button_height = 50
         self.button_spacing = 20
+
+        print("[GameResultDialog] Initialized")
+
+    def _calculate_positions(self):
+        """
+        Calculate dialog and button positions based on current screen size.
+        Called every frame to handle window resizing.
+        """
+        # Get current screen dimensions
+        screen_width = self.screen.get_width()
+        screen_height = self.screen.get_height()
+
+        # Center dialog on current screen
+        self.dialog_x = (screen_width - self.dialog_width) // 2
+        self.dialog_y = (screen_height - self.dialog_height) // 2
 
         # Calculate horizontal positioning to center both buttons as a group
         total_buttons_width = 2 * self.button_width + self.button_spacing
@@ -146,6 +157,8 @@ class GameResultDialog:
 
         while running:
             # -------------------- Rendering --------------------
+            # Handle window resizing
+            self._calculate_positions()
 
             # Draw the semi-transparent overlay first (covers game board)
             self.screen.blit(overlay, (0, 0))
