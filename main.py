@@ -254,6 +254,130 @@ def reset_game_state(
     return False, None  # game_ended, last_result
 
 
+def show_game_setup_dialogs(screen, time_control_dialog, color_selection_dialog):
+    """
+    Show both time control and color selection dialogs.
+
+    Args:
+        screen: pygame.Surface for rendering dialogs
+        time_control_dialog: TimeControlDialog instance
+        color_selection_dialog: ColorSelectionDialog instance
+
+    Returns:
+        tuple: (selected_time_control, selected_color)
+            - selected_time_control: Time in seconds or None for unlimited
+            - selected_color: "white" or "black"
+    """
+    # Show time control dialog
+    selected_time_control = time_control_dialog.show()
+
+    if selected_time_control is None:
+        print("✅ Time control: Unlimited")
+    else:
+        minutes = selected_time_control // 60
+        print(f"✅ Time control: {minutes} minutes per player")
+
+    # Show color selection dialog
+    selected_color = color_selection_dialog.show()
+
+    # Update Config with selected color
+    setattr(Config, "HUMAN_COLOR", selected_color)
+    setattr(Config, "ENGINE_COLOR", "black" if selected_color == "white" else "white")
+
+    print(f"✅ Color selected: Human plays as {selected_color.upper()}")
+    print(f"   Engine plays as {Config.ENGINE_COLOR.upper()}")
+
+    # Optional: Flip board when playing as Black
+    if selected_color == "black":
+        setattr(Config, "FLIP_BOARD", True)
+    else:
+        setattr(Config, "FLIP_BOARD", False)
+
+    return selected_time_control, selected_color
+
+
+def start_new_game_with_dialogs(
+    board_state,
+    input_handler,
+    move_history,
+    engine_controller,
+    move_panel,
+    white_clock,
+    black_clock,
+    move_animator,
+    sound_manager,
+    screen,
+    time_control_dialog,
+    color_selection_dialog,
+):
+    """
+    Start a new game by showing setup dialogs and resetting all game state.
+
+    This function:
+    1. Shows time control and color selection dialogs
+    2. Resets the board and all game components
+    3. Applies the new settings
+    4. Returns control to the main loop
+
+    Args:
+        board_state: BoardState instance
+        input_handler: InputHandler instance
+        move_history: List of moves
+        engine_controller: EngineController instance
+        move_panel: MoveHistoryPanel instance
+        white_clock: White player's clock
+        black_clock: Black player's clock
+        move_animator: MoveAnimator instance
+        sound_manager: SoundManager instance
+        screen: pygame.Surface for rendering dialogs
+        time_control_dialog: TimeControlDialog instance
+        color_selection_dialog: ColorSelectionDialog instance
+
+    Returns:
+        tuple: (game_ended, last_result, new_time_control)
+            - game_ended: False (game just started)
+            - last_result: None (no previous result)
+            - new_time_control: The selected time control in seconds
+    """
+    print("\n[New Game] Showing setup dialogs...")
+
+    # Show dialogs to get new settings
+    new_time_control, new_color = show_game_setup_dialogs(
+        screen, time_control_dialog, color_selection_dialog
+    )
+
+    # Cancel any engine thinking
+    engine_controller.cancel_thinking()
+
+    # Reset board and game state
+    board_state.reset()
+    input_handler.reset()
+    move_history.clear()
+    move_panel.scroll_to_top()
+
+    # Reset both clocks with new time control
+    white_clock.reset(new_time_control)
+    black_clock.reset(new_time_control)
+    white_clock.start()
+    black_clock.start()
+    white_clock.activate()
+    white_clock.resume()
+
+    # Cancel any animations
+    move_animator.cancel()
+
+    # Play game start sound
+    sound_manager.play_game_start_sound()
+
+    print(
+        f"[New Game] Started - Time: {new_time_control}s, Color: {Config.HUMAN_COLOR}"
+    )
+    print(f"    Status: {board_state.get_game_status()}")
+
+    # Return updated game state
+    return False, None, new_time_control
+
+
 def main():
     """
     Main application entry point and game loop.
@@ -341,32 +465,15 @@ def main():
     sound_manager = SoundManager()
     print("✅ Sound manager initialized")
 
-    # Ask user to select time control
+    # Create dialog instances
     time_control_dialog = TimeControlDialog(screen)
-    selected_time_control = time_control_dialog.show()
-
-    if selected_time_control is None:
-        print("✅ Time control: Unlimited")
-    else:
-        minutes = selected_time_control // 60
-        print(f"✅ Time control: {minutes} minutes per player")
-
-    # Show color selection dialog
     color_selection_dialog = ColorSelectionDialog(screen)
-    selected_color = color_selection_dialog.show()
 
-    # Update Config with selected color
-    setattr(Config, "HUMAN_COLOR", selected_color)
-    setattr(Config, "ENGINE_COLOR", "black" if selected_color == "white" else "white")
-
-    # Flip board when playing as Black
-    if selected_color == "black":
-        setattr(Config, "FLIP_BOARD", True)
-    else:
-        setattr(Config, "FLIP_BOARD", False)
-
-    print(f"✅ Color selected: Human plays as {selected_color.upper()}")
-    print(f"   Engine plays as {Config.ENGINE_COLOR.upper()}")
+    # Show game setup dialogs (time control + color selection)
+    selected_time_control, selected_color = show_game_setup_dialogs(
+        screen, time_control_dialog, color_selection_dialog
+    )
+    game_time_control = selected_time_control
 
     # Initialize individual player clocks
     white_clock = PlayerClock(
@@ -530,17 +637,21 @@ def main():
 
                 # R key resets the board to starting position
                 elif event.key == pygame.K_r and not game_ended:
-                    game_ended, last_result = reset_game_state(
-                        board_state,
-                        input_handler,
-                        move_history,
-                        engine_controller,
-                        move_panel,
-                        white_clock,
-                        black_clock,
-                        move_animator,
-                        sound_manager,
-                        game_time_control,
+                    game_ended, last_result, game_time_control = (
+                        start_new_game_with_dialogs(
+                            board_state,
+                            input_handler,
+                            move_history,
+                            engine_controller,
+                            move_panel,
+                            white_clock,
+                            black_clock,
+                            move_animator,
+                            sound_manager,
+                            screen,
+                            time_control_dialog,
+                            color_selection_dialog,
+                        )
                     )
                     print("[Action] Board reset")
                     print(f"    Status: {board_state.get_game_status()}")
@@ -733,17 +844,21 @@ def main():
                     # Handle New Game button click
                     if button_id == "new_game":
                         print("[Action] New Game button pressed")
-                        game_ended, last_result = reset_game_state(
-                            board_state,
-                            input_handler,
-                            move_history,
-                            engine_controller,
-                            move_panel,
-                            white_clock,
-                            black_clock,
-                            move_animator,
-                            sound_manager,
-                            game_time_control,
+                        game_ended, last_result, game_time_control = (
+                            start_new_game_with_dialogs(
+                                board_state,
+                                input_handler,
+                                move_history,
+                                engine_controller,
+                                move_panel,
+                                white_clock,
+                                black_clock,
+                                move_animator,
+                                sound_manager,
+                                screen,
+                                time_control_dialog,
+                                color_selection_dialog,
+                            )
                         )
 
                         # Check if engine should move first
@@ -831,21 +946,22 @@ def main():
                         # Show result dialog
                         choice = result_dialog.show("resignation", winner, "")
                         if choice == "new_game":
-                            board_state.reset()
-                            input_handler.reset()
-                            move_history.clear()
-                            engine_controller.cancel_thinking()
-                            game_ended = False
-                            last_result = None
-                            move_panel.scroll_to_top()
-                            white_clock.reset()
-                            black_clock.reset()
-                            white_clock.start()
-                            black_clock.start()
-                            white_clock.pause()
-                            black_clock.pause()
-                            move_animator.cancel()
-                            sound_manager.play_game_start_sound()
+                            game_ended, last_result, game_time_control = (
+                                start_new_game_with_dialogs(
+                                    board_state,
+                                    input_handler,
+                                    move_history,
+                                    engine_controller,
+                                    move_panel,
+                                    white_clock,
+                                    black_clock,
+                                    move_animator,
+                                    sound_manager,
+                                    screen,
+                                    time_control_dialog,
+                                    color_selection_dialog,
+                                )
+                            )
                             engine_thinking = check_engine_turn_and_move(
                                 board_state, engine_controller, move_history
                             )
@@ -976,21 +1092,22 @@ def main():
                                 # Show result dialog
                                 choice = result_dialog.show(result_type, winner, reason)
                                 if choice == "new_game":
-                                    board_state.reset()
-                                    input_handler.reset()
-                                    move_history.clear()
-                                    engine_controller.cancel_thinking()
-                                    game_ended = False
-                                    last_result = None
-                                    move_panel.scroll_to_top()
-                                    white_clock.reset()
-                                    black_clock.reset()
-                                    white_clock.start()
-                                    black_clock.start()
-                                    white_clock.pause()
-                                    black_clock.pause()
-                                    move_animator.cancel()
-                                    sound_manager.play_game_start_sound()
+                                    game_ended, last_result, game_time_control = (
+                                        start_new_game_with_dialogs(
+                                            board_state,
+                                            input_handler,
+                                            move_history,
+                                            engine_controller,
+                                            move_panel,
+                                            white_clock,
+                                            black_clock,
+                                            move_animator,
+                                            sound_manager,
+                                            screen,
+                                            time_control_dialog,
+                                            color_selection_dialog,
+                                        )
+                                    )
 
                                     engine_thinking = check_engine_turn_and_move(
                                         board_state, engine_controller, move_history
@@ -1094,21 +1211,22 @@ def main():
                                 # Show result dialog
                                 choice = result_dialog.show(result_type, winner, reason)
                                 if choice == "new_game":
-                                    board_state.reset()
-                                    input_handler.reset()
-                                    move_history.clear()
-                                    engine_controller.cancel_thinking()
-                                    game_ended = False
-                                    last_result = None
-                                    move_panel.scroll_to_top()
-                                    white_clock.reset()
-                                    black_clock.reset()
-                                    white_clock.start()
-                                    black_clock.start()
-                                    white_clock.pause()
-                                    black_clock.pause()
-                                    move_animator.cancel()
-                                    sound_manager.play_game_start_sound()
+                                    game_ended, last_result, game_time_control = (
+                                        start_new_game_with_dialogs(
+                                            board_state,
+                                            input_handler,
+                                            move_history,
+                                            engine_controller,
+                                            move_panel,
+                                            white_clock,
+                                            black_clock,
+                                            move_animator,
+                                            sound_manager,
+                                            screen,
+                                            time_control_dialog,
+                                            color_selection_dialog,
+                                        )
+                                    )
 
                                     engine_thinking = check_engine_turn_and_move(
                                         board_state, engine_controller, move_history
@@ -1153,17 +1271,21 @@ def main():
                     )
 
                 if choice == "new_game":
-                    game_ended, last_result = reset_game_state(
-                        board_state,
-                        input_handler,
-                        move_history,
-                        engine_controller,
-                        move_panel,
-                        white_clock,
-                        black_clock,
-                        move_animator,
-                        sound_manager,
-                        game_time_control,
+                    game_ended, last_result, game_time_control = (
+                        start_new_game_with_dialogs(
+                            board_state,
+                            input_handler,
+                            move_history,
+                            engine_controller,
+                            move_panel,
+                            white_clock,
+                            black_clock,
+                            move_animator,
+                            sound_manager,
+                            screen,
+                            time_control_dialog,
+                            color_selection_dialog,
+                        )
                     )
                     engine_thinking = check_engine_turn_and_move(
                         board_state, engine_controller, move_history
@@ -1199,17 +1321,21 @@ def main():
                     )
 
                 if choice == "new_game":
-                    game_ended, last_result = reset_game_state(
-                        board_state,
-                        input_handler,
-                        move_history,
-                        engine_controller,
-                        move_panel,
-                        white_clock,
-                        black_clock,
-                        move_animator,
-                        sound_manager,
-                        game_time_control,
+                    game_ended, last_result, game_time_control = (
+                        start_new_game_with_dialogs(
+                            board_state,
+                            input_handler,
+                            move_history,
+                            engine_controller,
+                            move_panel,
+                            white_clock,
+                            black_clock,
+                            move_animator,
+                            sound_manager,
+                            screen,
+                            time_control_dialog,
+                            color_selection_dialog,
+                        )
                     )
                     engine_thinking = check_engine_turn_and_move(
                         board_state, engine_controller, move_history
