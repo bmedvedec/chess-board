@@ -35,10 +35,6 @@ class SettingsMenu:
         self.menu_width = 700
         self.menu_height = 650
 
-        # Center menu on screen
-        self.menu_x = (screen.get_width() - self.menu_width) // 2
-        self.menu_y = (screen.get_height() - self.menu_height) // 2
-
         # Title font: Large bold for "Settings" header
         self.title_font = pygame.font.SysFont("Arial", 32, bold=True)
 
@@ -53,6 +49,19 @@ class SettingsMenu:
 
         # Initialize empty dict
         self.setting_rects = {}
+
+    def _calculate_positions(self):
+        """
+        Calculate dialog and button positions based on current screen size.
+        Called every frame to handle window resizing.
+        """
+        # Get current screen dimensions
+        screen_width = self.screen.get_width()
+        screen_height = self.screen.get_height()
+
+        # Center menu on screen
+        self.menu_x = (screen_width - self.menu_width) // 2
+        self.menu_y = (screen_height - self.menu_height) // 2
 
         # Create close button placeholder
         button_width = 120
@@ -201,6 +210,8 @@ class SettingsMenu:
 
         while running:
             # -------------------- Render Overlay --------------------
+            # Handle window resizing
+            self._calculate_positions()
 
             # Draw semi-transparent overlay over entire screen
             self.screen.blit(overlay, (0, 0))

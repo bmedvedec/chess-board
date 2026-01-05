@@ -44,11 +44,6 @@ class HelpScreen:
         self.menu_width = 700
         self.menu_height = 600
 
-        # Calculate centered position on screen
-        # Uses current screen dimensions to center dynamically
-        self.menu_x = (screen.get_width() - self.menu_width) // 2
-        self.menu_y = (screen.get_height() - self.menu_height) // 2
-
         # -------------------- Font Setup --------------------
 
         # Title font for main heading "Help & Instructions"
@@ -71,22 +66,6 @@ class HelpScreen:
         # Bold for clear call-to-action
         self.button_font = pygame.font.SysFont("Arial", 16, bold=True)
 
-        # -------------------- Close Button Configuration --------------------
-
-        # Button dimensions
-        button_width = 120
-        button_height = 40
-
-        # Create close button rectangle
-        # Centered horizontally at bottom of panel
-        # 60px from bottom provides comfortable margin
-        self.close_button = pygame.Rect(
-            self.menu_x + (self.menu_width - button_width) // 2,  # Centered X
-            self.menu_y + self.menu_height - 60,  # Near bottom
-            button_width,
-            button_height,
-        )
-
         # -------------------- Scrolling State --------------------
 
         # Current scroll offset in pixels
@@ -96,6 +75,32 @@ class HelpScreen:
         # Maximum scroll value (calculated dynamically based on content)
         # Prevents scrolling past end of content
         self.max_scroll = 0
+
+    def _calculate_positions(self):
+        """
+        Calculate dialog and UI element positions based on current screen size.
+        Called every frame to handle window resizing.
+        """
+        # Get current screen dimensions
+        screen_width = self.screen.get_width()
+        screen_height = self.screen.get_height()
+
+        # Calculate centered position on screen
+        # Uses current screen dimensions to center dynamically
+        self.menu_x = (screen_width - self.menu_width) // 2
+        self.menu_y = (screen_height - self.menu_height) // 2
+
+        # Button dimensions
+        button_width = 120
+        button_height = 40
+
+        # Create close button rectangle
+        self.close_button = pygame.Rect(
+            self.menu_x + (self.menu_width - button_width) // 2,
+            self.menu_y + self.menu_height - 60,
+            button_width,
+            button_height,
+        )
 
     def show(self):
         """
@@ -126,6 +131,8 @@ class HelpScreen:
 
         while running:
             # -------------------- Draw Overlay Background --------------------
+            # Handle window resizing
+            self._calculate_positions()
 
             # Draw semi-transparent overlay over game
             # Darkens everything except help panel for focus

@@ -38,10 +38,6 @@ class PromotionDialog:
         self.dialog_width = 400
         self.dialog_height = 150
 
-        # Center dialog in the window
-        self.dialog_x = (screen.get_width() - self.dialog_width) // 2
-        self.dialog_y = (screen.get_height() - self.dialog_height) // 2
-
         # Define available promotion piece options
         # Order is standard: Queen (most common), Rook, Bishop, Knight
         self.pieces = [chess.QUEEN, chess.ROOK, chess.BISHOP, chess.KNIGHT]
@@ -56,6 +52,19 @@ class PromotionDialog:
             len(self.pieces) * self.piece_size
             + (len(self.pieces) - 1) * self.piece_spacing
         )
+
+    def _calculate_positions(self):
+        """
+        Calculate dialog and button positions based on current screen size.
+        Called every frame to handle window resizing.
+        """
+        # Get current screen dimensions
+        screen_width = self.screen.get_width()
+        screen_height = self.screen.get_height()
+
+        # Center dialog in the window
+        self.dialog_x = (screen_width - self.dialog_width) // 2
+        self.dialog_y = (screen_height - self.dialog_height) // 2
 
         # Center the piece row within the dialog
         self.pieces_start_x = (
@@ -102,6 +111,8 @@ class PromotionDialog:
 
         while running:
             # -------------------- Rendering Phase --------------------
+            # Handle window resizing
+            self._calculate_positions()
 
             # Draw semi-transparent overlay over the game board
             # This darkens the background and focuses attention on the dialog
