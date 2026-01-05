@@ -141,6 +141,7 @@ class Config:
     ASSETS_DIR = "assets"  # Root directory for all game assets
     PIECE_IMAGES_DIR = os.path.join(ASSETS_DIR, "pieces")  # Chess piece images
     SOUNDS_DIR = os.path.join(ASSETS_DIR, "sounds")  # Sound effect files
+    ICONS_DIR = os.path.join(ASSETS_DIR, "icons")  # Icon images
 
     # ===================
     # Debug Settings

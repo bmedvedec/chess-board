@@ -866,40 +866,6 @@ def main():
                             board_state, engine_controller, move_history
                         )
 
-                    # Handle Change Time Control button
-                    elif button_id == "change_time":
-                        print("[Action] Change Time Control button pressed")
-
-                        # Show time control dialog
-                        new_time_control = time_control_dialog.show()
-
-                        # Update stored time control
-                        game_time_control = new_time_control
-
-                        # Reset game with new time control
-                        game_ended, last_result = reset_game_state(
-                            board_state,
-                            input_handler,
-                            move_history,
-                            engine_controller,
-                            move_panel,
-                            white_clock,
-                            black_clock,
-                            move_animator,
-                            sound_manager,
-                            game_time_control,
-                        )
-
-                        if new_time_control is None:
-                            print(f"[Action] New time control: Unlimited")
-                        else:
-                            minutes = new_time_control // 60
-                            print(f"[Action] New time control: {minutes} minutes")
-
-                        engine_thinking = check_engine_turn_and_move(
-                            board_state, engine_controller, move_history
-                        )
-
                     # Handle save button click
                     if button_id == "save_pgn":
                         if len(board_state.board.move_stack) > 0:
