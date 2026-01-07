@@ -129,15 +129,12 @@ class InputHandler:
     ) -> bool:
         human_color = chess.WHITE if Config.HUMAN_COLOR == "white" else chess.BLACK
 
-        if self.virtual_board is None:
-            self.virtual_board = self.board_state.board.copy()
-            self.virtual_board.turn = human_color
+        # Use visual board (real board + queued premoves) for both selection and legality
+        visual_board = self.build_visual_board()
 
         if self.selected_square is None:
-            # Get piece from virtual board if real board is empty on that square
-            piece_real = self.board_state.board.piece_at(square)
-            piece = piece_real if piece_real else self.virtual_board.piece_at(square)
-
+            # Selection phase: get piece from visual board
+            piece = visual_board.piece_at(square)
             if piece is None or piece.color != human_color:
                 return False
 
@@ -145,10 +142,10 @@ class InputHandler:
             self.selected_piece = piece
             self.is_premove_mode = True
 
+            # Legal moves from this premove position
+            visual_board.turn = human_color
             self.legal_moves_from_selected = [
-                move
-                for move in self.virtual_board.legal_moves
-                if move.from_square == square
+                move for move in visual_board.legal_moves if move.from_square == square
             ]
 
             print(f"[Premove] Selected {piece.symbol()} at {chess.square_name(square)}")
@@ -157,21 +154,14 @@ class InputHandler:
             )
             return False
 
-        # Second click → queue the move
         else:
-            # Reselection of own piece
-            piece_real = self.board_state.board.piece_at(square)
-            piece_virt = (
-                self.virtual_board.piece_at(square) if self.virtual_board else None
-            )
-            piece = piece_real if piece_real else piece_virt
-
+            # Second click: maybe reselect own piece on visual board
+            piece = visual_board.piece_at(square)
             if piece is not None and piece.color == human_color:
                 self._deselect()
-                self._clear_premove()
                 return self._handle_premove_click(square, piece)
 
-            # Queue the move
+            # Queue the move, checking legality on visual board
             promotion = None
             from_piece = self.selected_piece
             if from_piece and from_piece.piece_type == chess.PAWN:
@@ -186,10 +176,14 @@ class InputHandler:
                         return False
 
             move = chess.Move(self.selected_square, square, promotion)
-            self.premove_queue.append(move)
-            self.virtual_board.push(move)
-            self.virtual_board.turn = human_color  # allow chaining
 
+            visual_board.turn = human_color
+            if move not in visual_board.legal_moves:
+                print(f"[Premove] Illegal premove on visual board: {move.uci()}")
+                self._deselect()
+                return False
+
+            self.premove_queue.append(move)
             print(f"[Premove] Queued move: {move.uci()}")
             self._deselect()
             return False
@@ -456,33 +450,36 @@ class InputHandler:
         if square is None:
             return
 
-        # Check what's at the clicked square
-        piece = self.board_state.board.piece_at(square)
-
         # Determine human player's color
         human_color = chess.WHITE if Config.HUMAN_COLOR == "white" else chess.BLACK
 
-        # During engine thinking, only allow drag for premove if enabled
         if engine_thinking:
             if not Config.ENABLE_PREMOVE:
                 return
-            # Allow drag preparation for human's pieces only
+
+            # Use visual board (real + queued premoves) for premove drag
+            visual_board = self.build_visual_board()
+            piece = visual_board.piece_at(square)
+
+            # Allow drag preparation for human's pieces only in premove position
             if piece is not None and piece.color == human_color:
                 self.drag_start_square = square
                 self.drag_piece = piece
                 self.drag_start_pos = pos
                 self.mouse_moved = False
                 print(f"[Premove] Prepared drag from {chess.square_name(square)}")
+                return
+
+            # No valid premove piece here
             return
 
-        # Normal gameplay - prepare for potential drag if clicking on player's own piece
+        # Normal gameplay (not engine thinking) – keep existing logic
+        piece = self.board_state.board.piece_at(square)
         if piece is not None and piece.color == self.board_state.board.turn:
             self.drag_start_square = square
             self.drag_piece = piece
             self.drag_start_pos = pos
             self.mouse_moved = False
-            # Don't start dragging yet - wait to see if mouse moves
-            # This allows clicks without movement to work as click-to-move
 
     def handle_mouse_up(
         self, pos: Tuple[int, int], engine_thinking: bool = False
@@ -533,19 +530,23 @@ class InputHandler:
 
             # Check if this is a premove drag
             if engine_thinking and Config.ENABLE_PREMOVE:
-                if self.virtual_board is None:
-                    human_color = (
-                        chess.WHITE if Config.HUMAN_COLOR == "white" else chess.BLACK
-                    )
-                    self.virtual_board = self.board_state.board.copy()
-                    self.virtual_board.turn = human_color
+                # Build premove logic board: real board + all queued premoves
+                logic_board = self._get_premove_logic_board()
+                human_color = (
+                    chess.WHITE if Config.HUMAN_COLOR == "white" else chess.BLACK
+                )
 
-                promotion = None
-                from_piece = self.drag_piece
-
-                if from_piece is None:
+                # Get piece from logic board at drag start square
+                from_piece = logic_board.piece_at(self.drag_start_square)
+                if from_piece is None or from_piece.color != human_color:
+                    # Not our piece in premove position -> invalid premove
+                    self.drag_piece = None
+                    self.drag_start_square = None
+                    self.drag_start_pos = None
+                    self._deselect()
                     return False
 
+                promotion = None
                 if from_piece.piece_type == chess.PAWN:
                     to_rank = chess.square_rank(to_square)
                     if (from_piece.color == chess.WHITE and to_rank == 7) or (
@@ -554,7 +555,6 @@ class InputHandler:
                         is_white = from_piece.color == chess.WHITE
                         promotion = self.promotion_dialog.show(is_white)
                         if promotion is None:
-                            self._clear_premove()
                             self._deselect()
                             self.drag_piece = None
                             self.drag_start_square = None
@@ -562,17 +562,31 @@ class InputHandler:
                             return False
 
                 move = chess.Move(self.drag_start_square, to_square, promotion)
+
+                # Check legality on logic board (premove position)
+                if move not in logic_board.legal_moves:
+                    print(
+                        f"[Premove] Illegal premove drag on logic board: {move.uci()}"
+                    )
+                    self._deselect()
+                    self.drag_piece = None
+                    self.drag_start_square = None
+                    self.drag_start_pos = None
+                    return False
+
+                # Queue premove
                 self.premove_queue.append(move)
-                self.virtual_board.push(move)
-                self.virtual_board.turn = from_piece.color  # allow chaining
 
                 if promotion:
                     print(
-                        f"[Premove] Queued drag promotion: {chess.square_name(self.drag_start_square)} -> {chess.square_name(to_square)} ({chess.PIECE_NAMES[promotion]})"
+                        f"[Premove] Queued drag promotion: "
+                        f"{chess.square_name(self.drag_start_square)} -> {chess.square_name(to_square)} "
+                        f"({chess.PIECE_NAMES[promotion]})"
                     )
                 else:
                     print(
-                        f"[Premove] Queued drag move: {chess.square_name(self.drag_start_square)} -> {chess.square_name(to_square)}"
+                        f"[Premove] Queued drag move: "
+                        f"{chess.square_name(self.drag_start_square)} -> {chess.square_name(to_square)}"
                     )
 
                 # Clear drag state
@@ -582,10 +596,8 @@ class InputHandler:
                 self._deselect()
                 return True  # Handled as premove queue
 
-            # Normal drag - attempt to execute the move
-            # Mark this as a drag-and-drop method
+            # Normal drag - attempt to execute the move immediately
             self.last_move_method = "drag"
-
             move_made = self._try_make_move(to_square)
 
             # Clear all drag state
@@ -851,4 +863,20 @@ class InputHandler:
                 print(f"[Premove] visual push failed for {move.uci()}: {e}")
                 break
 
+        return temp
+
+    def _get_premove_logic_board(self) -> chess.Board:
+        """
+        Board used for premove legality: real board + all queued premoves.
+        """
+        temp = self.board_state.board.copy()
+        human_color = chess.WHITE if Config.HUMAN_COLOR == "white" else chess.BLACK
+
+        # Always set turn to human before applying each queued premove
+        for move in self.premove_queue:
+            temp.turn = human_color
+            temp.push(move)
+
+        # After applying premoves, it's still human's turn for the next premove
+        temp.turn = human_color
         return temp
