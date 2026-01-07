@@ -1174,7 +1174,7 @@ def main():
                                 # Game continues - execute premove if queued
                                 if input_handler.has_premove():
                                     premove_made = (
-                                        input_handler.execute_premove_if_valid()
+                                        input_handler.execute_next_premove_if_valid()
                                     )
                                     if premove_made:
                                         # Premove was executed - handle as a regular move
@@ -1461,6 +1461,7 @@ def main():
                 Config.ENABLE_PREMOVE and engine_controller.is_thinking()
             ):
                 input_handler.render_dragged_piece()
+                board_gui.draw_premove_arrows(input_handler.premove_queue)
 
         # Draw captured pieces (if enabled)
         if Config.SHOW_CAPTURED_PIECES:

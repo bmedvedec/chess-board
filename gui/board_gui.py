@@ -10,7 +10,7 @@ move indicators.
 
 import pygame
 import chess
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 from pathlib import Path
 
 from gui.colors import Colors
@@ -493,3 +493,33 @@ class BoardGUI:
 
         # Highlight destination square
         self.highlight_square(last_move.to_square, Colors.LAST_MOVE_TO)
+
+    def get_square_center(self, square: chess.Square) -> Tuple[int, int]:
+        x, y = self._square_to_coords(square)
+        return x + self.square_size // 2, y + self.square_size // 2
+
+    def draw_premove_arrows(self, premove_queue: List[chess.Move]):
+        if not premove_queue:
+            return
+        color = (100, 150, 255, 255)  # Blue for premove arrows
+        width = 8
+        for move in premove_queue:
+            from_x, from_y = self.get_square_center(move.from_square)
+            to_x, to_y = self.get_square_center(move.to_square)
+            pygame.draw.line(self.screen, color, (from_x, from_y), (to_x, to_y), width)
+            # Arrow head
+            dx = to_x - from_x
+            dy = to_y - from_y
+            length = (dx**2 + dy**2) ** 0.5
+            if length == 0:
+                continue
+            ux = dx / length
+            uy = dy / length
+            head_size = 20
+            p1x = to_x - head_size * ux - head_size * 0.5 * uy
+            p1y = to_y - head_size * uy + head_size * 0.5 * ux
+            p2x = to_x - head_size * ux + head_size * 0.5 * uy
+            p2y = to_y - head_size * uy - head_size * 0.5 * ux
+            pygame.draw.polygon(
+                self.screen, color, [(to_x, to_y), (p1x, p1y), (p2x, p2y)]
+            )

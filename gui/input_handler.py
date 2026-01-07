@@ -66,9 +66,10 @@ class InputHandler:
         self.last_move_method: Optional[str] = None  # "click" or "drag"
 
         # Premove state - allows move input during engine's turn
-        self.premove_from: Optional[chess.Square] = None  # Premove source square
-        self.premove_to: Optional[chess.Square] = None  # Premove destination square
-        self.premove_promotion: Optional[int] = None  # Premove promotion piece
+        self.premove_queue: List[chess.Move] = []  # Queue of premoves
+        self.virtual_board: Optional[chess.Board] = (
+            None  # Simulated board for premove input
+        )
         self.is_premove_mode: bool = False  # True when showing premove selection
 
         print("[InputHandler] Initialized successfully with premove support")
@@ -126,46 +127,28 @@ class InputHandler:
     def _handle_premove_click(
         self, square: chess.Square, piece: Optional[chess.Piece]
     ) -> bool:
-        """
-        Handle click during engine's turn for premove selection.
-
-        Allows the player to select their own pieces and see legal moves,
-        preparing a move to be executed immediately after the engine moves.
-
-        Args:
-            square (chess.Square): Square that was clicked
-            piece (Optional[chess.Piece]): Piece at the clicked square, or None
-
-        Returns:
-            bool: Always False (premoves don't execute immediately)
-        """
-        # Determine human player's color
         human_color = chess.WHITE if Config.HUMAN_COLOR == "white" else chess.BLACK
 
-        # If no piece selected yet
+        if self.virtual_board is None:
+            self.virtual_board = self.board_state.board.copy()
+            self.virtual_board.turn = human_color
+
         if self.selected_square is None:
-            # Empty square or opponent's piece - nothing to select
+            # Get piece from virtual board if real board is empty on that square
+            piece_real = self.board_state.board.piece_at(square)
+            piece = piece_real if piece_real else self.virtual_board.piece_at(square)
+
             if piece is None or piece.color != human_color:
                 return False
 
-            # Valid piece to select for premove
             self.selected_square = square
             self.selected_piece = piece
             self.is_premove_mode = True
 
-            # Calculate legal moves for premove
-            # During engine's turn, board.legal_moves returns engine's moves!
-            # We need to simulate future position after engine moves
-            # For simplicity, we show ALL pseudo-legal moves (moves that would be legal
-            # if the piece could move, ignoring whether we'd be in check after engine moves)
-
-            # Use a temporary board copy with turn flipped to calculate our legal moves
-            temp_board = self.board_state.board.copy()
-            temp_board.turn = human_color  # Flip turn to calculate OUR moves
-
-            # Get all legal moves for our color
             self.legal_moves_from_selected = [
-                move for move in temp_board.legal_moves if move.from_square == square
+                move
+                for move in self.virtual_board.legal_moves
+                if move.from_square == square
             ]
 
             print(f"[Premove] Selected {piece.symbol()} at {chess.square_name(square)}")
@@ -174,68 +157,41 @@ class InputHandler:
             )
             return False
 
-        # Piece already selected - handle second click
+        # Second click → queue the move
         else:
-            print(f"[DEBUG Premove] Second click at {chess.square_name(square)}")
-            print(
-                f"[DEBUG Premove] selected_square: {chess.square_name(self.selected_square) if self.selected_square is not None else None}"
+            # Reselection of own piece
+            piece_real = self.board_state.board.piece_at(square)
+            piece_virt = (
+                self.virtual_board.piece_at(square) if self.virtual_board else None
             )
-            print(f"[DEBUG Premove] Same square? {square == self.selected_square}")
+            piece = piece_real if piece_real else piece_virt
 
-            # Clicking same square - deselect
-            if square == self.selected_square:
-                print(f"[Premove] Deselecting {chess.square_name(square)}")
-                self._deselect()
-                self._clear_premove()
-                return False
-
-            # Clicking different own piece - reselect
             if piece is not None and piece.color == human_color:
-                print(f"[Premove] Reselecting piece at {chess.square_name(square)}")
-                # Clear all previous selection and premove state
                 self._deselect()
                 self._clear_premove()
-                # Recursively handle as new selection
                 return self._handle_premove_click(square, piece)
 
-            # Clicking destination square - store premove
-            # Note: We don't validate if it's legal yet, that happens after engine moves
-            self.premove_from = self.selected_square
-            self.premove_to = square
-
-            # Check if this would be a promotion
-            from_piece = self.board_state.board.piece_at(self.premove_from)
+            # Queue the move
+            promotion = None
+            from_piece = self.selected_piece
             if from_piece and from_piece.piece_type == chess.PAWN:
                 to_rank = chess.square_rank(square)
                 if (from_piece.color == chess.WHITE and to_rank == 7) or (
                     from_piece.color == chess.BLACK and to_rank == 0
                 ):
-                    # This would be a promotion - show dialog
                     is_white = from_piece.color == chess.WHITE
-                    promotion_piece = self.promotion_dialog.show(is_white)
-                    if promotion_piece is None:
-                        # Cancelled
-                        self._clear_premove()
+                    promotion = self.promotion_dialog.show(is_white)
+                    if promotion is None:
                         self._deselect()
                         return False
-                    self.premove_promotion = promotion_piece
-                    print(
-                        f"[Premove] Queued promotion move: {chess.square_name(self.premove_from)} -> {chess.square_name(self.premove_to)} ({chess.PIECE_NAMES[promotion_piece]})"
-                    )
-                else:
-                    self.premove_promotion = None
-                    print(
-                        f"[Premove] Queued move: {chess.square_name(self.premove_from)} -> {chess.square_name(self.premove_to)}"
-                    )
-            else:
-                self.premove_promotion = None
-                print(
-                    f"[Premove] Queued move: {chess.square_name(self.premove_from)} -> {chess.square_name(self.premove_to)}"
-                )
 
-            # Deselect after queuing to properly highlight premove
+            move = chess.Move(self.selected_square, square, promotion)
+            self.premove_queue.append(move)
+            self.virtual_board.push(move)
+            self.virtual_board.turn = human_color  # allow chaining
+
+            print(f"[Premove] Queued move: {move.uci()}")
             self._deselect()
-
             return False
 
     def _handle_selection(
@@ -391,49 +347,42 @@ class InputHandler:
             self._deselect()
             return False
 
-    def execute_premove_if_valid(self) -> bool:
-        """
-        Attempt to execute the queued premove after engine has moved.
-
-        Checks if the premove is still legal after the engine's move,
-        and executes it if valid. Clears the premove regardless of outcome.
-
-        Returns:
-            bool: True if premove was executed successfully, False otherwise
-        """
-        # Check if there's a premove queued
-        if self.premove_from is None or self.premove_to is None:
+    def execute_next_premove_if_valid(self) -> bool:
+        if not self.premove_queue:
             return False
 
-        # Set move method to "click" for animation
-        self.last_move_method = "click"
-
-        # Construct the move
-        move = chess.Move(self.premove_from, self.premove_to, self.premove_promotion)
-
+        move = self.premove_queue[0]
         print(f"[Premove] Attempting to execute: {move.uci()}")
 
-        # Check if the premove is still legal after engine's move
         if move in self.board_state.board.legal_moves:
-            # Move is valid - execute it
+            self.last_move_method = "click"
             move_san = self.board_state.board.san(move)
             success = self.board_state.make_move(move)
 
             if success:
                 print(f"[Premove] ✅ Executed: {move_san} ({move.uci()})")
-                self._clear_premove()
+                self.premove_queue.pop(0)
+
+                # Resync virtual board if more premoves remain
+                if self.premove_queue:
+                    self.virtual_board = self.board_state.board.copy()
+                    for m in self.premove_queue:
+                        self.virtual_board.push(m)
+                    self.virtual_board.turn = (
+                        chess.WHITE if Config.HUMAN_COLOR == "white" else chess.BLACK
+                    )
+                else:
+                    self.virtual_board = None
+
                 self._deselect()
                 return True
-            else:
-                print(f"[Premove] ❌ Execution failed: {move.uci()}")
-                self._clear_premove()
-                self._deselect()
-                return False
-        else:
-            print(f"[Premove] ❌ No longer legal after engine's move")
-            self._clear_premove()
-            self._deselect()
-            return False
+
+        # Invalid or failed
+        print(f"[Premove] ❌ No longer legal / failed")
+        self.premove_queue.clear()
+        self.virtual_board = None
+        self._deselect()
+        return False
 
     def has_premove(self) -> bool:
         """
@@ -442,7 +391,7 @@ class InputHandler:
         Returns:
             bool: True if premove is queued, False otherwise
         """
-        return self.premove_from is not None and self.premove_to is not None
+        return len(self.premove_queue) > 0
 
     def is_in_premove_mode(self) -> bool:
         """
@@ -457,9 +406,8 @@ class InputHandler:
         """
         Clear all premove state.
         """
-        self.premove_from = None
-        self.premove_to = None
-        self.premove_promotion = None
+        self.premove_queue.clear()
+        self.virtual_board = None
         self.is_premove_mode = False
 
     def _is_promotion_move(self, move: chess.Move) -> bool:
@@ -593,47 +541,53 @@ class InputHandler:
 
             # Check if this is a premove drag
             if engine_thinking and Config.ENABLE_PREMOVE:
-                # Queue the premove instead of executing
-                self.premove_from = self.drag_start_square
-                self.premove_to = to_square
-                self.premove_promotion = None
+                if self.virtual_board is None:
+                    human_color = (
+                        chess.WHITE if Config.HUMAN_COLOR == "white" else chess.BLACK
+                    )
+                    self.virtual_board = self.board_state.board.copy()
+                    self.virtual_board.turn = human_color
 
-                # Check if this would be a promotion
-                from_piece = self.board_state.board.piece_at(self.premove_from)
-                if from_piece and from_piece.piece_type == chess.PAWN:
+                promotion = None
+                from_piece = self.drag_piece
+
+                if from_piece is None:
+                    return False
+
+                if from_piece.piece_type == chess.PAWN:
                     to_rank = chess.square_rank(to_square)
                     if (from_piece.color == chess.WHITE and to_rank == 7) or (
                         from_piece.color == chess.BLACK and to_rank == 0
                     ):
-                        # Show promotion dialog
                         is_white = from_piece.color == chess.WHITE
-                        promotion_piece = self.promotion_dialog.show(is_white)
-                        if promotion_piece is None:
-                            # Cancelled
+                        promotion = self.promotion_dialog.show(is_white)
+                        if promotion is None:
                             self._clear_premove()
                             self._deselect()
+                            self.drag_piece = None
+                            self.drag_start_square = None
+                            self.drag_start_pos = None
                             return False
-                        self.premove_promotion = promotion_piece
-                        print(
-                            f"[Premove] Queued drag promotion: {chess.square_name(self.premove_from)} -> {chess.square_name(self.premove_to)} ({chess.PIECE_NAMES[promotion_piece]})"
-                        )
-                    else:
-                        print(
-                            f"[Premove] Queued drag move: {chess.square_name(self.premove_from)} -> {chess.square_name(self.premove_to)}"
-                        )
+
+                move = chess.Move(self.drag_start_square, to_square, promotion)
+                self.premove_queue.append(move)
+                self.virtual_board.push(move)
+                self.virtual_board.turn = from_piece.color  # allow chaining
+
+                if promotion:
+                    print(
+                        f"[Premove] Queued drag promotion: {chess.square_name(self.drag_start_square)} -> {chess.square_name(to_square)} ({chess.PIECE_NAMES[promotion]})"
+                    )
                 else:
                     print(
-                        f"[Premove] Queued drag move: {chess.square_name(self.premove_from)} -> {chess.square_name(self.premove_to)}"
+                        f"[Premove] Queued drag move: {chess.square_name(self.drag_start_square)} -> {chess.square_name(to_square)}"
                     )
 
                 # Clear drag state
                 self.drag_piece = None
                 self.drag_start_square = None
                 self.drag_start_pos = None
-
-                # Deselect after queuing
                 self._deselect()
-
                 return True  # Handled as premove queue
 
             # Normal drag - attempt to execute the move
@@ -763,14 +717,11 @@ class InputHandler:
             self.board_gui.highlight_square(self.selected_square, highlight_color)
 
         # Also highlight queued premove if it exists (but don't show dots again)
-        if self.has_premove() and not self.selected_square:
-            # Only show premove highlight if nothing is currently selected
-            # Highlight premove source and destination with distinct color
-            premove_highlight = (100, 150, 200, 150)  # Blue-ish for premove
-            if self.premove_from is not None:
-                self.board_gui.highlight_square(self.premove_from, premove_highlight)
-            if self.premove_to is not None:
-                self.board_gui.highlight_square(self.premove_to, premove_highlight)
+        if self.has_premove() and self.selected_square is None:
+            premove_highlight = (100, 150, 200, 150)
+            for move in self.premove_queue:
+                self.board_gui.highlight_square(move.from_square, premove_highlight)
+                self.board_gui.highlight_square(move.to_square, premove_highlight)
 
     def render_legal_move_dots(self, engine_thinking: bool = False):
         """
