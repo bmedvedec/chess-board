@@ -1429,6 +1429,12 @@ def main():
             ):
                 input_handler.render_square_highlights(engine_controller.is_thinking())
 
+        # Decide which board to use for drawing pieces
+        if Config.ENABLE_PREMOVE and input_handler.has_premove():
+            draw_board = input_handler.build_visual_board()
+        else:
+            draw_board = board_state.board
+
         # Draw pieces (hide piece being animated or dragged)
         for square in chess.SQUARES:
             # Skip if being animated
@@ -1439,7 +1445,7 @@ def main():
             if input_handler.dragging and square == input_handler.drag_start_square:
                 continue
 
-            piece = board_state.board.piece_at(square)
+            piece = draw_board.piece_at(square)
             if piece:
                 board_gui._draw_piece(piece, square)
 

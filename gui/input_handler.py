@@ -363,15 +363,7 @@ class InputHandler:
                 print(f"[Premove] ✅ Executed: {move_san} ({move.uci()})")
                 self.premove_queue.pop(0)
 
-                # Resync virtual board if more premoves remain
-                if self.premove_queue:
-                    self.virtual_board = self.board_state.board.copy()
-                    for m in self.premove_queue:
-                        self.virtual_board.push(m)
-                    self.virtual_board.turn = (
-                        chess.WHITE if Config.HUMAN_COLOR == "white" else chess.BLACK
-                    )
-                else:
+                if not self.premove_queue:
                     self.virtual_board = None
 
                 self._deselect()
@@ -841,3 +833,22 @@ class InputHandler:
         self.last_move_method = None
 
         print("[InputHandler] Soft reset (cleared selection)")
+
+    def build_visual_board(self) -> chess.Board:
+        """
+        Build a board representing what should be visually shown:
+        current real position + all queued premoves applied in order.
+        """
+        temp = self.board_state.board.copy()
+
+        human_color = chess.WHITE if Config.HUMAN_COLOR == "white" else chess.BLACK
+
+        for move in self.premove_queue:
+            try:
+                temp.turn = human_color
+                temp.push(move)
+            except Exception as e:
+                print(f"[Premove] visual push failed for {move.uci()}: {e}")
+                break
+
+        return temp
