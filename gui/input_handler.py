@@ -5,7 +5,7 @@ Comprehensive mouse and keyboard input management for chess interactions.
 
 This module implements a robust input handling system that supports multiple
 interaction patterns for making chess moves. It manages selection state,
-validates moves, and provides visual feedback to the user.
+validates moves, provides visual feedback, and supports premove functionality.
 """
 
 import chess
@@ -15,15 +15,17 @@ from gui.board_gui import BoardGUI
 from gui.board_state import BoardState
 from gui.colors import Colors
 from gui.promotion_dialog import PromotionDialog
+from utils.config import Config
 
 
 class InputHandler:
     """
-    User input manager for chess piece interactions.
+    User input manager for chess piece interactions with premove support.
 
     Handles all mouse and keyboard input related to selecting and moving chess
     pieces. Supports both click-to-move and drag-and-drop interaction patterns,
-    provides visual feedback, and validates moves before execution.
+    provides visual feedback, validates moves, and allows premove input during
+    engine's turn.
     """
 
     def __init__(self, board_gui: BoardGUI, board_state: BoardState):
@@ -63,9 +65,17 @@ class InputHandler:
         # Track how the last move was made (for animation decision)
         self.last_move_method: Optional[str] = None  # "click" or "drag"
 
-        print("[InputHandler] Initialized successfully")
+        # Premove state - allows move input during engine's turn
+        self.premove_from: Optional[chess.Square] = None  # Premove source square
+        self.premove_to: Optional[chess.Square] = None  # Premove destination square
+        self.premove_promotion: Optional[int] = None  # Premove promotion piece
+        self.is_premove_mode: bool = False  # True when showing premove selection
 
-    def handle_mouse_click(self, pos: Tuple[int, int]) -> bool:
+        print("[InputHandler] Initialized successfully with premove support")
+
+    def handle_mouse_click(
+        self, pos: Tuple[int, int], engine_thinking: bool = False
+    ) -> bool:
         """
         Process mouse click events for click-to-move interaction pattern.
 
@@ -73,30 +83,160 @@ class InputHandler:
         legal moves, second click either moves to a destination, reselects a
         different piece, or deselects the current piece.
 
+        With premove enabled, allows piece selection even during engine's turn.
+
         Args:
             pos (Tuple[int, int]): Mouse cursor position (x, y) in screen pixels
+            engine_thinking (bool): True if engine is currently calculating a move
 
         Returns:
             bool: True if a move was successfully executed, False otherwise
         """
+        print(f"[DEBUG] handle_mouse_click called - engine_thinking: {engine_thinking}")
+
         # Convert screen pixel coordinates to chess square index
         square = self.board_gui.coords_to_square(pos[0], pos[1])
 
         if square is None:
             # Click was outside the board boundaries - clear selection
             self._deselect()
+            self._clear_premove()
             return False
+
+        print(f"[DEBUG] Clicked square: {chess.square_name(square)}")
 
         # Determine what piece (if any) is at the clicked square
         piece = self.board_state.board.piece_at(square)
+        print(f"[DEBUG] Piece at square: {piece.symbol() if piece else 'None'}")
 
-        # Route to appropriate handler based on selection state
+        # Check if premove is enabled and engine is thinking
+        if Config.ENABLE_PREMOVE and engine_thinking:
+            print(f"[DEBUG] Routing to _handle_premove_click")
+            # Premove mode - allow selection but don't execute moves
+            return self._handle_premove_click(square, piece)
+
+        # Normal gameplay - route to appropriate handler based on selection state
         if self.selected_square is None:
             # No piece currently selected - handle new selection
             return self._handle_selection(square, piece)
         else:
             # Piece already selected - handle move attempt or reselection
             return self._handle_move_or_reselect(square, piece)
+
+    def _handle_premove_click(
+        self, square: chess.Square, piece: Optional[chess.Piece]
+    ) -> bool:
+        """
+        Handle click during engine's turn for premove selection.
+
+        Allows the player to select their own pieces and see legal moves,
+        preparing a move to be executed immediately after the engine moves.
+
+        Args:
+            square (chess.Square): Square that was clicked
+            piece (Optional[chess.Piece]): Piece at the clicked square, or None
+
+        Returns:
+            bool: Always False (premoves don't execute immediately)
+        """
+        # Determine human player's color
+        human_color = chess.WHITE if Config.HUMAN_COLOR == "white" else chess.BLACK
+
+        # If no piece selected yet
+        if self.selected_square is None:
+            # Empty square or opponent's piece - nothing to select
+            if piece is None or piece.color != human_color:
+                return False
+
+            # Valid piece to select for premove
+            self.selected_square = square
+            self.selected_piece = piece
+            self.is_premove_mode = True
+
+            # Calculate legal moves for premove
+            # During engine's turn, board.legal_moves returns engine's moves!
+            # We need to simulate future position after engine moves
+            # For simplicity, we show ALL pseudo-legal moves (moves that would be legal
+            # if the piece could move, ignoring whether we'd be in check after engine moves)
+
+            # Use a temporary board copy with turn flipped to calculate our legal moves
+            temp_board = self.board_state.board.copy()
+            temp_board.turn = human_color  # Flip turn to calculate OUR moves
+
+            # Get all legal moves for our color
+            self.legal_moves_from_selected = [
+                move for move in temp_board.legal_moves if move.from_square == square
+            ]
+
+            print(f"[Premove] Selected {piece.symbol()} at {chess.square_name(square)}")
+            print(
+                f"          Showing {len(self.legal_moves_from_selected)} legal moves"
+            )
+            return False
+
+        # Piece already selected - handle second click
+        else:
+            print(f"[DEBUG Premove] Second click at {chess.square_name(square)}")
+            print(
+                f"[DEBUG Premove] selected_square: {chess.square_name(self.selected_square) if self.selected_square is not None else None}"
+            )
+            print(f"[DEBUG Premove] Same square? {square == self.selected_square}")
+
+            # Clicking same square - deselect
+            if square == self.selected_square:
+                print(f"[Premove] Deselecting {chess.square_name(square)}")
+                self._deselect()
+                self._clear_premove()
+                return False
+
+            # Clicking different own piece - reselect
+            if piece is not None and piece.color == human_color:
+                print(f"[Premove] Reselecting piece at {chess.square_name(square)}")
+                # Clear all previous selection and premove state
+                self._deselect()
+                self._clear_premove()
+                # Recursively handle as new selection
+                return self._handle_premove_click(square, piece)
+
+            # Clicking destination square - store premove
+            # Note: We don't validate if it's legal yet, that happens after engine moves
+            self.premove_from = self.selected_square
+            self.premove_to = square
+
+            # Check if this would be a promotion
+            from_piece = self.board_state.board.piece_at(self.premove_from)
+            if from_piece and from_piece.piece_type == chess.PAWN:
+                to_rank = chess.square_rank(square)
+                if (from_piece.color == chess.WHITE and to_rank == 7) or (
+                    from_piece.color == chess.BLACK and to_rank == 0
+                ):
+                    # This would be a promotion - show dialog
+                    is_white = from_piece.color == chess.WHITE
+                    promotion_piece = self.promotion_dialog.show(is_white)
+                    if promotion_piece is None:
+                        # Cancelled
+                        self._clear_premove()
+                        self._deselect()
+                        return False
+                    self.premove_promotion = promotion_piece
+                    print(
+                        f"[Premove] Queued promotion move: {chess.square_name(self.premove_from)} -> {chess.square_name(self.premove_to)} ({chess.PIECE_NAMES[promotion_piece]})"
+                    )
+                else:
+                    self.premove_promotion = None
+                    print(
+                        f"[Premove] Queued move: {chess.square_name(self.premove_from)} -> {chess.square_name(self.premove_to)}"
+                    )
+            else:
+                self.premove_promotion = None
+                print(
+                    f"[Premove] Queued move: {chess.square_name(self.premove_from)} -> {chess.square_name(self.premove_to)}"
+                )
+
+            # Deselect after queuing to properly highlight premove
+            self._deselect()
+
+            return False
 
     def _handle_selection(
         self, square: chess.Square, piece: Optional[chess.Piece]
@@ -128,6 +268,7 @@ class InputHandler:
         # Valid piece to select - update selection state
         self.selected_square = square
         self.selected_piece = piece
+        self.is_premove_mode = False  # Regular selection, not premove
 
         # Calculate and cache all legal moves from this square
         # This is used for highlighting and move validation
@@ -172,7 +313,9 @@ class InputHandler:
             self._deselect()
             return self._handle_selection(square, piece)
 
-        # Clicking empty square or opponent piece - attempt move
+        # Clicking empty square or opponent piece
+        # If clicked on empty square or opponent's piece, try to make a move
+        # If the move is illegal, it will deselect automatically
         # Mark this as a click-to-move method
         self.last_move_method = "click"
 
@@ -248,6 +391,77 @@ class InputHandler:
             self._deselect()
             return False
 
+    def execute_premove_if_valid(self) -> bool:
+        """
+        Attempt to execute the queued premove after engine has moved.
+
+        Checks if the premove is still legal after the engine's move,
+        and executes it if valid. Clears the premove regardless of outcome.
+
+        Returns:
+            bool: True if premove was executed successfully, False otherwise
+        """
+        # Check if there's a premove queued
+        if self.premove_from is None or self.premove_to is None:
+            return False
+
+        # Set move method to "click" for animation
+        self.last_move_method = "click"
+
+        # Construct the move
+        move = chess.Move(self.premove_from, self.premove_to, self.premove_promotion)
+
+        print(f"[Premove] Attempting to execute: {move.uci()}")
+
+        # Check if the premove is still legal after engine's move
+        if move in self.board_state.board.legal_moves:
+            # Move is valid - execute it
+            move_san = self.board_state.board.san(move)
+            success = self.board_state.make_move(move)
+
+            if success:
+                print(f"[Premove] ✅ Executed: {move_san} ({move.uci()})")
+                self._clear_premove()
+                self._deselect()
+                return True
+            else:
+                print(f"[Premove] ❌ Execution failed: {move.uci()}")
+                self._clear_premove()
+                self._deselect()
+                return False
+        else:
+            print(f"[Premove] ❌ No longer legal after engine's move")
+            self._clear_premove()
+            self._deselect()
+            return False
+
+    def has_premove(self) -> bool:
+        """
+        Check if a premove is currently queued.
+
+        Returns:
+            bool: True if premove is queued, False otherwise
+        """
+        return self.premove_from is not None and self.premove_to is not None
+
+    def is_in_premove_mode(self) -> bool:
+        """
+        Check if currently in premove mode (selecting during engine's turn).
+
+        Returns:
+            bool: True if premove mode is active with a piece selected
+        """
+        return self.is_premove_mode and self.selected_square is not None
+
+    def _clear_premove(self):
+        """
+        Clear all premove state.
+        """
+        self.premove_from = None
+        self.premove_to = None
+        self.premove_promotion = None
+        self.is_premove_mode = False
+
     def _is_promotion_move(self, move: chess.Move) -> bool:
         """
         Detect whether a move is a pawn promotion.
@@ -284,15 +498,18 @@ class InputHandler:
         self.selected_square = None
         self.selected_piece = None
         self.legal_moves_from_selected = []
+        self.is_premove_mode = False
 
-    def handle_mouse_down(self, pos: Tuple[int, int]):
+    def handle_mouse_down(self, pos: Tuple[int, int], engine_thinking: bool = False):
         """
         Handle mouse button press event - prepare for potential drag.
 
         Records the initial state when mouse button is pressed on a piece.
+        With premove enabled, allows drag preparation even during engine's turn.
 
         Args:
             pos (Tuple[int, int]): Mouse cursor position (x, y) when button pressed
+            engine_thinking (bool): True if engine is currently calculating
         """
         # Convert screen position to board square
         square = self.board_gui.coords_to_square(pos[0], pos[1])
@@ -302,7 +519,23 @@ class InputHandler:
         # Check what's at the clicked square
         piece = self.board_state.board.piece_at(square)
 
-        # Prepare for potential drag if clicking on player's own piece
+        # Determine human player's color
+        human_color = chess.WHITE if Config.HUMAN_COLOR == "white" else chess.BLACK
+
+        # During engine thinking, only allow drag for premove if enabled
+        if engine_thinking:
+            if not Config.ENABLE_PREMOVE:
+                return
+            # Allow drag preparation for human's pieces only
+            if piece is not None and piece.color == human_color:
+                self.drag_start_square = square
+                self.drag_piece = piece
+                self.drag_start_pos = pos
+                self.mouse_moved = False
+                print(f"[Premove] Prepared drag from {chess.square_name(square)}")
+            return
+
+        # Normal gameplay - prepare for potential drag if clicking on player's own piece
         if piece is not None and piece.color == self.board_state.board.turn:
             self.drag_start_square = square
             self.drag_piece = piece
@@ -311,7 +544,9 @@ class InputHandler:
             # Don't start dragging yet - wait to see if mouse moves
             # This allows clicks without movement to work as click-to-move
 
-    def handle_mouse_up(self, pos: Tuple[int, int]) -> bool:
+    def handle_mouse_up(
+        self, pos: Tuple[int, int], engine_thinking: bool = False
+    ) -> bool:
         """
         Handle mouse button release event - complete drag or signal click.
 
@@ -319,11 +554,14 @@ class InputHandler:
         False to signal that this was a click (not a drag) and should be
         handled by the click handler.
 
+        With premove enabled, queues the move if engine is thinking instead of executing.
+
         Args:
             pos (Tuple[int, int]): Mouse cursor position (x, y) when button released
+            engine_thinking (bool): True if engine is currently calculating
 
         Returns:
-            bool: True if drag move was completed, False if this was a click
+            bool: True if drag move was completed/queued, False if this was a click
         """
         # Check if we were actively dragging
         if self.dragging:
@@ -341,6 +579,7 @@ class InputHandler:
                 self.drag_piece = None
                 self.drag_start_square = None
                 self.drag_start_pos = None
+                self._deselect()
                 return False  # Don't treat as click
 
             # Handle drop on same square (drag cancelled)
@@ -349,9 +588,55 @@ class InputHandler:
                 self.drag_piece = None
                 self.drag_start_square = None
                 self.drag_start_pos = None
+                # Keep selection for click-to-move
                 return False  # Let click handler select the piece
 
-            # Attempt to execute the dragged move
+            # Check if this is a premove drag
+            if engine_thinking and Config.ENABLE_PREMOVE:
+                # Queue the premove instead of executing
+                self.premove_from = self.drag_start_square
+                self.premove_to = to_square
+                self.premove_promotion = None
+
+                # Check if this would be a promotion
+                from_piece = self.board_state.board.piece_at(self.premove_from)
+                if from_piece and from_piece.piece_type == chess.PAWN:
+                    to_rank = chess.square_rank(to_square)
+                    if (from_piece.color == chess.WHITE and to_rank == 7) or (
+                        from_piece.color == chess.BLACK and to_rank == 0
+                    ):
+                        # Show promotion dialog
+                        is_white = from_piece.color == chess.WHITE
+                        promotion_piece = self.promotion_dialog.show(is_white)
+                        if promotion_piece is None:
+                            # Cancelled
+                            self._clear_premove()
+                            self._deselect()
+                            return False
+                        self.premove_promotion = promotion_piece
+                        print(
+                            f"[Premove] Queued drag promotion: {chess.square_name(self.premove_from)} -> {chess.square_name(self.premove_to)} ({chess.PIECE_NAMES[promotion_piece]})"
+                        )
+                    else:
+                        print(
+                            f"[Premove] Queued drag move: {chess.square_name(self.premove_from)} -> {chess.square_name(self.premove_to)}"
+                        )
+                else:
+                    print(
+                        f"[Premove] Queued drag move: {chess.square_name(self.premove_from)} -> {chess.square_name(self.premove_to)}"
+                    )
+
+                # Clear drag state
+                self.drag_piece = None
+                self.drag_start_square = None
+                self.drag_start_pos = None
+
+                # Deselect after queuing
+                self._deselect()
+
+                return True  # Handled as premove queue
+
+            # Normal drag - attempt to execute the move
             # Mark this as a drag-and-drop method
             self.last_move_method = "drag"
 
@@ -372,15 +657,17 @@ class InputHandler:
         self.mouse_moved = False
         return False  # Signal to main loop to process as click
 
-    def handle_mouse_motion(self, pos: Tuple[int, int]):
+    def handle_mouse_motion(self, pos: Tuple[int, int], engine_thinking: bool = False):
         """
         Handle mouse movement - initiate or update drag operation.
 
         Detects when mouse has moved enough to start a drag (>5 pixels),
         then tracks the cursor position for visual feedback.
+        With premove enabled, supports dragging during engine's turn.
 
         Args:
             pos (Tuple[int, int]): Current mouse cursor position (x, y)
+            engine_thinking (bool): True if engine is currently calculating
         """
         # Check if we should initiate a drag operation
         if self.drag_start_pos is not None and not self.dragging:
@@ -399,15 +686,36 @@ class InputHandler:
                 if self.drag_start_square is not None and self.drag_piece is not None:
                     self.selected_square = self.drag_start_square
                     self.selected_piece = self.drag_piece
-                    # Cache legal moves for highlighting
-                    self.legal_moves_from_selected = [
-                        move
-                        for move in self.board_state.board.legal_moves
-                        if move.from_square == self.drag_start_square
-                    ]
-                    print(
-                        f"[Input] Started dragging {self.drag_piece.symbol()} from {chess.square_name(self.drag_start_square)}"
-                    )
+
+                    # Set premove mode if engine is thinking
+                    self.is_premove_mode = engine_thinking and Config.ENABLE_PREMOVE
+
+                    # Calculate legal moves - fix for premove during engine's turn
+                    if self.is_premove_mode:
+                        # During engine's turn, flip board to get OUR legal moves
+                        temp_board = self.board_state.board.copy()
+                        temp_board.turn = self.drag_piece.color
+                        self.legal_moves_from_selected = [
+                            move
+                            for move in temp_board.legal_moves
+                            if move.from_square == self.drag_start_square
+                        ]
+                    else:
+                        # Normal play - use current board
+                        self.legal_moves_from_selected = [
+                            move
+                            for move in self.board_state.board.legal_moves
+                            if move.from_square == self.drag_start_square
+                        ]
+
+                    if self.is_premove_mode:
+                        print(
+                            f"[Premove] Started dragging {self.drag_piece.symbol()} from {chess.square_name(self.drag_start_square)}"
+                        )
+                    else:
+                        print(
+                            f"[Input] Started dragging {self.drag_piece.symbol()} from {chess.square_name(self.drag_start_square)}"
+                        )
 
         # Update cursor position if already dragging
         # This allows the dragged piece to follow the cursor smoothly
@@ -433,24 +741,67 @@ class InputHandler:
         """
         self.last_move_method = None
 
-    def render_selection_highlights(self):
+    def render_square_highlights(self, engine_thinking: bool = False):
         """
-        Render visual feedback for selected piece and legal moves.
+        Render square highlight overlays (drawn UNDER pieces).
 
-        Draws highlight overlays on the board to show the user which piece
-        is selected and where it can move.
+        Draws semi-transparent colored overlays on selected squares and premove
+        queued squares. This should be called before drawing pieces.
+
+        Args:
+            engine_thinking (bool): True if engine is currently calculating
         """
         if self.selected_square is not None:
             # Highlight the selected square with semi-transparent overlay
-            self.board_gui.highlight_square(
-                self.selected_square, Colors.SELECTED_SQUARE
-            )
+            # Use different color for premove mode
+            if self.is_premove_mode:
+                # Slightly different color for premove (more blue-ish)
+                highlight_color = (150, 170, 100, 180)
+            else:
+                highlight_color = Colors.SELECTED_SQUARE
 
-            # Draw legal move indicators (dots on empty squares, circles on captures)
-            # Passes board_state for capture detection
+            self.board_gui.highlight_square(self.selected_square, highlight_color)
+
+        # Also highlight queued premove if it exists (but don't show dots again)
+        if self.has_premove() and not self.selected_square:
+            # Only show premove highlight if nothing is currently selected
+            # Highlight premove source and destination with distinct color
+            premove_highlight = (100, 150, 200, 150)  # Blue-ish for premove
+            if self.premove_from is not None:
+                self.board_gui.highlight_square(self.premove_from, premove_highlight)
+            if self.premove_to is not None:
+                self.board_gui.highlight_square(self.premove_to, premove_highlight)
+
+    def render_legal_move_dots(self, engine_thinking: bool = False):
+        """
+        Render legal move indicators (drawn OVER pieces).
+
+        Draws dots and circles showing where the selected piece can move.
+        This should be called after drawing pieces so dots are visible on top.
+
+        Args:
+            engine_thinking (bool): True if engine is currently calculating
+        """
+        # Draw legal move indicators (dots on empty squares, circles on captures)
+        # ALWAYS show if we have legal moves calculated, regardless of whose turn it is
+        if self.selected_square is not None and self.legal_moves_from_selected:
             self.board_gui.draw_legal_move_indicators(
                 self.legal_moves_from_selected, self.board_state.board
             )
+
+    def render_selection_highlights(self, engine_thinking: bool = False):
+        """
+        Render visual feedback for selected piece and legal moves.
+
+        DEPRECATED: Use render_square_highlights() and render_legal_move_dots() separately
+        for proper layering. This method calls both for backwards compatibility.
+
+        Args:
+            engine_thinking (bool): True if engine is currently calculating
+        """
+        # Call both methods for backwards compatibility
+        self.render_square_highlights(engine_thinking)
+        self.render_legal_move_dots(engine_thinking)
 
     def render_dragged_piece(self):
         """
@@ -495,8 +846,8 @@ class InputHandler:
         """
         Reset all input handler state (for new game or board reset).
 
-        Clears all selection, drag, and interaction state, returning the
-        input handler to its initial state.
+        Clears all selection, drag, premove, and interaction state, returning
+        the input handler to its initial state.
         """
         # Clear selection state
         self._deselect()
@@ -509,7 +860,33 @@ class InputHandler:
         self.drag_start_pos = None
         self.mouse_moved = False
 
+        # Clear premove state
+        self._clear_premove()
+
         # Clear move method tracking
         self.last_move_method = None
 
-        print("[InputHandler] State reset")
+        print("[InputHandler] State reset (including premove)")
+
+    def soft_reset(self):
+        """
+        Soft reset - clears drag and selection but preserves premove queue.
+
+        Used after engine moves to clear any pending input state while keeping
+        queued premoves for immediate execution.
+        """
+        # Clear drag state
+        self.dragging = False
+        self.drag_piece = None
+        self.drag_start_square = None
+        self.drag_pos = None
+        self.drag_start_pos = None
+        self.mouse_moved = False
+
+        # Clear selection (in case partial premove selection)
+        self._deselect()
+
+        # Clear move method tracking
+        self.last_move_method = None
+
+        print("[InputHandler] Soft reset (cleared selection)")

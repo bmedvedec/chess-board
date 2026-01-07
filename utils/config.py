@@ -133,6 +133,7 @@ class Config:
 
     SHOW_CAPTURED_PIECES = True  # Display panel showing pieces captured by each player
     SHOW_GAME_CLOCK = True  # Display game timer/clock for timed matches
+    ENABLE_PREMOVE = True  # Allow queueing moves while engine is thinking
     SHOW_FPS = False  # Display current frames per second in the window
 
     # ===================

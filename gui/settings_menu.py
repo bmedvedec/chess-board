@@ -137,6 +137,11 @@ class SettingsMenu:
                 "value": Config.SHOW_CAPTURED_PIECES,
                 "type": "toggle",
             },
+            "enable_premove": {
+                "label": "Enable Premoves",
+                "value": Config.ENABLE_PREMOVE,
+                "type": "toggle",
+            },
             "show_fps": {
                 "label": "Show FPS Counter",
                 "value": Config.SHOW_FPS,
@@ -580,4 +585,5 @@ class SettingsMenu:
         setattr(Config, "SHOW_LAST_MOVE", self.settings["show_last_move"]["value"])
         setattr(Config, "SHOW_COORDINATES", self.settings["show_coordinates"]["value"])
         setattr(Config, "SHOW_CAPTURED_PIECES", self.settings["show_captured"]["value"])
+        setattr(Config, "ENABLE_PREMOVE", self.settings["enable_premove"]["value"])
         setattr(Config, "SHOW_FPS", self.settings["show_fps"]["value"])

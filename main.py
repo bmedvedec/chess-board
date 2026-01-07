@@ -918,19 +918,20 @@ def main():
                             print(f"[Navigation] Position: {board_state.get_fen()}")
                             print("[Navigation] Click 'New Game' to start fresh game")
 
-                        # Continue with existing click handling for piece selection
                         elif not game_ended:
-                            # Handle piece selection for drag
                             human_color = (
                                 chess.WHITE
                                 if Config.HUMAN_COLOR == "white"
                                 else chess.BLACK
                             )
-                            if (
-                                board_state.board.turn == human_color
-                                and not engine_controller.is_thinking()
+                            # Allow mouse down during engine thinking if premove enabled
+                            if board_state.board.turn == human_color or (
+                                Config.ENABLE_PREMOVE
+                                and engine_controller.is_thinking()
                             ):
-                                input_handler.handle_mouse_down(event.pos)
+                                input_handler.handle_mouse_down(
+                                    event.pos, engine_controller.is_thinking()
+                                )
 
             # Mouse button up - handle move completion
             elif event.type == pygame.MOUSEBUTTONUP and not game_ended:
@@ -938,16 +939,20 @@ def main():
                     human_color = (
                         chess.WHITE if Config.HUMAN_COLOR == "white" else chess.BLACK
                     )
-                    if (
-                        board_state.board.turn == human_color
-                        and not engine_controller.is_thinking()
+                    # Allow mouse up during engine thinking if premove enabled
+                    if board_state.board.turn == human_color or (
+                        Config.ENABLE_PREMOVE and engine_controller.is_thinking()
                     ):
-                        # Try to complete drag move
-                        move_made = input_handler.handle_mouse_up(event.pos)
+                        # Try to complete drag move (may be premove)
+                        move_made = input_handler.handle_mouse_up(
+                            event.pos, engine_controller.is_thinking()
+                        )
 
                         # If no drag move was made, handle as click-to-move
                         if not move_made:
-                            move_made = input_handler.handle_mouse_click(event.pos)
+                            move_made = input_handler.handle_mouse_click(
+                                event.pos, engine_controller.is_thinking()
+                            )
 
                         # If player made a move, add to history and check for engine turn
                         if move_made:
@@ -1055,11 +1060,13 @@ def main():
                 human_color = (
                     chess.WHITE if Config.HUMAN_COLOR == "white" else chess.BLACK
                 )
-                if (
-                    board_state.board.turn == human_color
-                    and not engine_controller.is_thinking()
+                # Allow mouse motion during engine thinking if premove enabled
+                if board_state.board.turn == human_color or (
+                    Config.ENABLE_PREMOVE and engine_controller.is_thinking()
                 ):
-                    input_handler.handle_mouse_motion(event.pos)
+                    input_handler.handle_mouse_motion(
+                        event.pos, engine_controller.is_thinking()
+                    )
 
         # -------------------- Engine Move Processing --------------------
 
@@ -1118,7 +1125,7 @@ def main():
 
                             print(f"[Engine] Move made: {move_san} ({move_uci})")
                             print(f"         Status: {board_state.get_game_status()}")
-                            input_handler.reset()
+                            input_handler.soft_reset()
 
                             # Check for game end
                             is_over, result_type, winner, reason = (
@@ -1162,6 +1169,132 @@ def main():
                                     engine_thinking = check_engine_turn_and_move(
                                         board_state, engine_controller, move_history
                                     )
+
+                            else:
+                                # Game continues - execute premove if queued
+                                if input_handler.has_premove():
+                                    premove_made = (
+                                        input_handler.execute_premove_if_valid()
+                                    )
+                                    if premove_made:
+                                        # Premove was executed - handle as a regular move
+                                        if board_state.board.move_stack:
+                                            last_move = board_state.board.peek()
+                                            move_history.append(last_move.uci())
+                                            # Play sound, check game end, etc.
+
+                                            # Start move animation ONLY for click-to-move
+                                            # Check how the move was made
+                                            move_method = (
+                                                input_handler.get_last_move_method()
+                                            )
+
+                                            if move_method == "click":
+                                                # Animate click-to-move
+                                                piece_at_dest = (
+                                                    board_state.board.piece_at(
+                                                        last_move.to_square
+                                                    )
+                                                )
+                                                if piece_at_dest:
+                                                    move_animator.start_animation(
+                                                        piece_at_dest,
+                                                        last_move.from_square,
+                                                        last_move.to_square,
+                                                    )
+                                            # If move_method == "drag", skip animation
+
+                                            # Clear the move method tracking
+                                            input_handler.clear_move_method()
+
+                                            # Play move sound
+                                            is_capture = board_state.board.is_capture(
+                                                last_move
+                                            )
+                                            is_check = board_state.board.is_check()
+                                            is_castle = board_state.board.is_castling(
+                                                last_move
+                                            )
+
+                                            if is_castle:
+                                                sound_manager.play_castle_sound()
+                                            elif last_move.promotion:
+                                                sound_manager.play_promotion_sound()
+                                            else:
+                                                sound_manager.play_move_sound(
+                                                    is_capture=is_capture,
+                                                    is_check=is_check,
+                                                )
+
+                                            # Switch active clock based on whose turn it is
+                                            if board_state.board.turn == chess.WHITE:
+                                                white_clock.activate()
+                                                white_clock.resume()
+                                                black_clock.deactivate()
+                                            else:
+                                                black_clock.activate()
+                                                black_clock.resume()
+                                                white_clock.deactivate()
+
+                                        # Check for game end
+                                        is_over, result_type, winner, reason = (
+                                            check_game_end_conditions(board_state)
+                                        )
+                                        if is_over:
+                                            game_ended = True
+                                            last_result = (result_type, winner, reason)
+                                            sound_manager.play_game_end_sound()
+
+                                            # Pause both clocks
+                                            white_clock.pause()
+                                            black_clock.pause()
+
+                                            print(f"[Game] Game over: {result_type}")
+                                            if winner:
+                                                print(f"       Winner: {winner}")
+                                            if reason:
+                                                print(f"       Reason: {reason}")
+
+                                            # Show result dialog
+                                            choice = result_dialog.show(
+                                                result_type, winner, reason
+                                            )
+                                            if choice == "new_game":
+                                                (
+                                                    game_ended,
+                                                    last_result,
+                                                    game_time_control,
+                                                ) = start_new_game_with_dialogs(
+                                                    board_state,
+                                                    input_handler,
+                                                    move_history,
+                                                    engine_controller,
+                                                    move_panel,
+                                                    white_clock,
+                                                    black_clock,
+                                                    move_animator,
+                                                    sound_manager,
+                                                    screen,
+                                                    time_control_dialog,
+                                                    color_selection_dialog,
+                                                )
+
+                                                engine_thinking = (
+                                                    check_engine_turn_and_move(
+                                                        board_state,
+                                                        engine_controller,
+                                                        move_history,
+                                                    )
+                                                )
+                                        else:
+                                            engine_thinking = (
+                                                check_engine_turn_and_move(
+                                                    board_state,
+                                                    engine_controller,
+                                                    move_history,
+                                                )
+                                            )
+
                         else:
                             print(f"[Engine] ❌ Failed to apply move: {move_uci}")
                     else:
@@ -1288,14 +1421,13 @@ def main():
         # Draw check indicator
         board_gui.draw_check_indicator(board_state.board)
 
-        # Draw selection highlights and legal move indicators (only on human's turn)
+        # Draw square highlights UNDER pieces
         if not game_ended:
             human_color = chess.WHITE if Config.HUMAN_COLOR == "white" else chess.BLACK
-            if (
-                board_state.board.turn == human_color
-                and not engine_controller.is_thinking()
+            if board_state.board.turn == human_color or (
+                Config.ENABLE_PREMOVE and engine_controller.is_thinking()
             ):
-                input_handler.render_selection_highlights()
+                input_handler.render_square_highlights(engine_controller.is_thinking())
 
         # Draw pieces (hide piece being animated or dragged)
         for square in chess.SQUARES:
@@ -1311,15 +1443,22 @@ def main():
             if piece:
                 board_gui._draw_piece(piece, square)
 
+        # Draw legal move dots OVER pieces
+        if not game_ended:
+            human_color = chess.WHITE if Config.HUMAN_COLOR == "white" else chess.BLACK
+            if board_state.board.turn == human_color or (
+                Config.ENABLE_PREMOVE and engine_controller.is_thinking()
+            ):
+                input_handler.render_legal_move_dots(engine_controller.is_thinking())
+
         # Render animated piece
         move_animator.render(screen)
 
-        # Render dragged piece (only on human's turn)
+        # Render dragged piece (on human's turn OR during engine thinking if premove)
         if not game_ended:
             human_color = chess.WHITE if Config.HUMAN_COLOR == "white" else chess.BLACK
-            if (
-                board_state.board.turn == human_color
-                and not engine_controller.is_thinking()
+            if board_state.board.turn == human_color or (
+                Config.ENABLE_PREMOVE and engine_controller.is_thinking()
             ):
                 input_handler.render_dragged_piece()
 
