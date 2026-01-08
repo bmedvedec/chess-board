@@ -152,15 +152,37 @@ def navigate_to_move(move_index: int, full_move_history: List[str]):
     Returns:
         New BoardState at the requested position
     """
+    # DEBUG: Print what we're trying to do
+    print(f"[navigate_to_move] DEBUG INFO:")
+    print(f"  move_index = {move_index}")
+    print(f"  full_move_history length = {len(full_move_history)}")
+    print(f"  full_move_history = {full_move_history}")
+
     # Create fresh board
     nav_state = BoardState()
 
     # Replay moves up to and including the selected move
     moves_to_play = move_index + 1 if move_index >= 0 else len(full_move_history)
+    print(f"  moves_to_play = {moves_to_play}")
 
     for i in range(min(moves_to_play, len(full_move_history))):
         move_uci = full_move_history[i]
-        nav_state.make_move_uci(move_uci)
+        print(f"  [{i}] Applying move: '{move_uci}'")
+
+        try:
+            nav_state.make_move_uci(move_uci)
+            print(
+                f"      ✓ Success - board now has {len(nav_state.board.move_stack)} moves"
+            )
+        except Exception as e:
+            print(f"      ✗ FAILED: {e}")
+            print(f"      Board state before error:")
+            print(f"        FEN: {nav_state.get_fen()}")
+            print(f"        Turn: {nav_state.get_turn_string()}")
+            break
+
+    print(f"  Final board.move_stack length: {len(nav_state.board.move_stack)}")
+    print(f"  Final FEN: {nav_state.get_fen()}")
 
     return nav_state
 
@@ -235,7 +257,9 @@ def reset_game_state(
     """
     board_state.reset()
     input_handler.reset()
+    print(f"[DEBUG] move_history: {move_history}")
     move_history.clear()
+    current_move_index = -1  # Reset navigation
     engine_controller.cancel_thinking()
     move_panel.scroll_to_top()
 
@@ -351,7 +375,9 @@ def start_new_game_with_dialogs(
     # Reset board and game state
     board_state.reset()
     input_handler.reset()
+    print(f"[DEBUG] move_history: {move_history}")
     move_history.clear()
+    current_move_index = -1  # Reset navigation
     move_panel.scroll_to_top()
 
     # Reset both clocks with new time control
@@ -520,6 +546,8 @@ def main():
 
     # Track move history for engine
     move_history = []
+    # Track current position in move history for navigation
+    current_move_index = -1  # -1 means "at latest position"
 
     # Game state flags
     game_ended = False
@@ -545,9 +573,18 @@ def main():
     print("  H = Help screen")
     print("  ESC = Exit game")
 
+    expected_len = 0
+
     # ==================== Main Game Loop ====================
     running = True
     while running:
+        # Monitor move_history for unexpected changes
+        if len(move_history) != expected_len:
+            print(f"[ERROR] move_history length changed unexpectedly!")
+            print(f"  Expected: {expected_len}, Got: {len(move_history)}")
+            print(f"  Contents: {move_history}")
+            expected_len = len(move_history)
+
         # -------------------- Event Handling --------------------
         # Process all events from the event queue
         for event in pygame.event.get():
@@ -563,51 +600,104 @@ def main():
 
                 # Left arrow - previous halfmove
                 elif event.key == pygame.K_LEFT:
-                    # Previous halfmove
-                    current_idx = len(board_state.board.move_stack) - 1
-                    if current_idx > 0:  # Can go back
-                        target_idx = current_idx - 1
-                        board_state = navigate_to_move(target_idx, move_history)
-                        input_handler.board_state = board_state
-                        input_handler.reset()
-                        print(
-                            f"[Navigation] ← Previous move (position {target_idx + 1})"
-                        )
-                    elif current_idx == 0:  # At first move, go to start
-                        board_state = navigate_to_move(-1, move_history)
-                        input_handler.board_state = board_state
-                        input_handler.reset()
-                        print(f"[Navigation] ← Start position")
+                    if not move_history:
+                        print("[Navigation] ← No moves to navigate")
+                    else:
+                        # Determine current position
+                        if current_move_index < 0:
+                            # At "latest" - use board's actual position
+                            current_idx = len(board_state.board.move_stack) - 1
+                        else:
+                            # Navigating in history
+                            current_idx = current_move_index
+
+                        if current_idx > 0:
+                            current_move_index = current_idx - 1
+                            board_state = navigate_to_move(
+                                current_move_index, move_history
+                            )
+                            input_handler.board_state = board_state
+                            input_handler.reset()
+                            print(f"[DEBUG] move_history: {move_history}")
+                            print(
+                                f"[Navigation] ← Previous move (position {current_move_index + 1})"
+                            )
+                        else:
+                            print("[Navigation] ← Already at first halfmove")
 
                 # Right arrow - next halfmove
                 elif event.key == pygame.K_RIGHT:
-                    # Next halfmove
-                    current_idx = len(board_state.board.move_stack) - 1
-                    if current_idx < len(move_history) - 1:
-                        target_idx = current_idx + 1
-                        board_state = navigate_to_move(target_idx, move_history)
-                        input_handler.board_state = board_state
-                        input_handler.reset()
-                        print(f"[Navigation] → Next move (position {target_idx + 1})")
+                    if not move_history:
+                        print("[Navigation] → No moves to navigate")
+                    else:
+                        # DEBUG: Print current state
+                        print(f"[DEBUG] Before navigation:")
+                        print(f"  move_history length: {len(move_history)}")
+                        print(f"  current_move_index: {current_move_index}")
+                        print(
+                            f"  board.move_stack length: {len(board_state.board.move_stack)}"
+                        )
+
+                        # Determine current position
+                        if current_move_index < 0:
+                            # At "latest" - already at the end, can't go forward
+                            print("[Navigation] → Already at latest position")
+                        else:
+                            # Navigating in history
+                            current_idx = current_move_index
+
+                            if current_idx < len(move_history) - 1:
+                                current_move_index = current_idx + 1
+
+                                # DEBUG: Print what move we're navigating to
+                                print(
+                                    f"[DEBUG] Navigating to index {current_move_index}"
+                                )
+                                print(
+                                    f"[DEBUG] Move at that index: {move_history[current_move_index]}"
+                                )
+
+                                board_state = navigate_to_move(
+                                    current_move_index, move_history
+                                )
+
+                                # DEBUG: Print resulting board state
+                                print(f"[DEBUG] After navigate_to_move:")
+                                print(
+                                    f"  board.move_stack length: {len(board_state.board.move_stack)}"
+                                )
+                                print(f"  FEN: {board_state.get_fen()}")
+
+                                input_handler.board_state = board_state
+                                input_handler.reset()
+                                print(
+                                    f"[Navigation] → Next move (position {current_move_index + 1})"
+                                )
+                            else:
+                                # At the last move in history - stay here
+                                print("[Navigation] → Already at last move")
 
                 # Up arrow - jump to first move
                 elif event.key == pygame.K_UP:
-                    # Jump to first move
                     if move_history:
+                        current_move_index = 0
                         board_state = navigate_to_move(0, move_history)
                         input_handler.board_state = board_state
                         input_handler.reset()
+                        print(f"[DEBUG] move_history: {move_history}")
                         print(f"[Navigation] ↑ First move")
 
                 # Down arrow - jump to last played move
                 elif event.key == pygame.K_DOWN:
-                    # Jump to last played move
                     if move_history:
-                        target_idx = len(move_history) - 1
-                        board_state = navigate_to_move(target_idx, move_history)
+                        current_move_index = len(move_history) - 1
+                        board_state = navigate_to_move(current_move_index, move_history)
                         input_handler.board_state = board_state
                         input_handler.reset()
-                        print(f"[Navigation] ↓ Last move (latest position)")
+                        print(f"[DEBUG] move_history: {move_history}")
+                        print(
+                            f"[Navigation] ↓ Last move (position {current_move_index + 1})"
+                        )
 
                 # S key opens settings menu
                 elif event.key == pygame.K_s:
@@ -675,7 +765,9 @@ def main():
                                 move_history.pop()
                             print(f"[Game] Undid move: {move2.uci()}")
 
+                        current_move_index = -1  # Reset to "at latest"
                         input_handler.reset()
+                        print(f"[DEBUG] move_history: {move_history}")
 
             # Window resize handler
             elif event.type == pygame.VIDEORESIZE:
@@ -901,6 +993,11 @@ def main():
                                 f"[Navigation] Jumped to position after move {clicked_move_idx + 1}"
                             )
 
+                            current_move_index = clicked_move_idx
+
+                            # Update navigation index
+                            current_move_index = clicked_move_idx
+
                             # Create new board state at that position
                             board_state = navigate_to_move(
                                 clicked_move_idx, move_history
@@ -909,6 +1006,7 @@ def main():
                             # Update references
                             input_handler.board_state = board_state
                             input_handler.reset()
+                            print(f"[DEBUG] move_history: {move_history}")
 
                             # Cancel any thinking
                             engine_controller.cancel_thinking()
@@ -963,7 +1061,25 @@ def main():
                             # Get the last move from board
                             if board_state.board.move_stack:
                                 last_move = board_state.board.peek()
-                                move_history.append(last_move.uci())
+                                print(
+                                    f"[DEBUG] Adding PLAYER move to history: {last_move.uci()}"
+                                )
+                                print(f"[DEBUG] move_history before: {move_history}")
+                                # Prevent duplicates - only add if not already in history
+                                if (
+                                    not move_history
+                                    or move_history[-1] != last_move.uci()
+                                ):
+                                    move_history.append(last_move.uci())
+                                    current_move_index = -1
+                                    move_panel.scroll_to_bottom()
+                                else:
+                                    print(
+                                        f"[DEBUG] Prevented duplicate PLAYER move: {last_move.uci()}"
+                                    )
+                                print(f"[DEBUG] move_history after: {move_history}")
+                                expected_len = len(move_history)
+                                current_move_index = -1  # Reset to "at latest"
                                 move_panel.scroll_to_bottom()
 
                                 # Start move animation ONLY for click-to-move
@@ -1101,7 +1217,22 @@ def main():
 
                         # If move applied successfully, update history and reset input
                         if success:
-                            move_history.append(move_uci)
+                            print(
+                                f"[DEBUG] Adding ENGINE move to history: {last_move.uci()}"
+                            )
+                            print(f"[DEBUG] move_history before: {move_history}")
+                            # Prevent duplicates - only add if not already in history
+                            if not move_history or move_history[-1] != move_uci:
+                                move_history.append(move_uci)
+                                current_move_index = -1
+                                move_panel.scroll_to_bottom()
+                            else:
+                                print(
+                                    f"[DEBUG] Prevented duplicate ENGINE move: {move_uci}"
+                                )
+                            print(f"[DEBUG] move_history after: {move_history}")
+                            expected_len = len(move_history)
+                            current_move_index = -1  # Reset to "at latest"
                             move_panel.scroll_to_bottom()
 
                             # Start animation
@@ -1192,8 +1323,30 @@ def main():
                                         # Premove was executed - handle as a regular move
                                         if board_state.board.move_stack:
                                             last_move = board_state.board.peek()
-                                            move_history.append(last_move.uci())
-                                            # Play sound, check game end, etc.
+                                            print(
+                                                f"[DEBUG] Adding EXECUTED PREMOVE to history: {last_move.uci()}"
+                                            )
+                                            print(
+                                                f"[DEBUG] move_history before: {move_history}"
+                                            )
+                                            # Prevent duplicates - only add if not already in history
+                                            if (
+                                                not move_history
+                                                or move_history[-1] != last_move.uci()
+                                            ):
+                                                move_history.append(last_move.uci())
+                                                current_move_index = -1
+                                            else:
+                                                print(
+                                                    f"[DEBUG] Prevented duplicate PREMOVE: {last_move.uci()}"
+                                                )
+                                            print(
+                                                f"[DEBUG] move_history after: {move_history}"
+                                            )
+                                            expected_len = len(move_history)
+                                            current_move_index = (
+                                                -1
+                                            )  # Reset to "at latest"
 
                                             # Start move animation ONLY for click-to-move
                                             # Check how the move was made
@@ -1491,22 +1644,17 @@ def main():
         white_clock.draw()
         black_clock.draw()
 
-        # Calculate current move index for highlighting
-        current_move_idx = (
-            len(board_state.board.move_stack) - 1
-            if board_state.board.move_stack
-            else -1
-        )
+        # Calculate which move to highlight in the panel
+        if current_move_index >= 0:
+            highlight_index = current_move_index
+        else:
+            highlight_index = (
+                len(board_state.board.move_stack) - 1
+                if board_state.board.move_stack
+                else -1
+            )
 
-        # Convert UCI move history to SAN for display
-        # Use the ORIGINAL move_history (not board_state's) to show all moves even during navigation
-        full_san_history = []
-        temp_board = BoardState()
-        for move_uci in move_history:
-            temp_board.make_move_uci(move_uci)
-        full_san_history = temp_board.get_move_history_san()
-
-        move_panel.draw(full_san_history, current_move_idx)
+        move_panel.draw(board_state.get_move_history_san(), highlight_index)
 
         # Draw game controls
         game_controls.draw()

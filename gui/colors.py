@@ -55,6 +55,8 @@ class Colors:
     BACKGROUND = (49, 46, 43)
     BORDER = (30, 30, 30)
     COORDINATE_TEXT = (200, 200, 200)
+    TEXT_PRIMARY = (255, 255, 255)
+    TEXT_SECONDARY = (180, 180, 180)
 
     # ===================
     # Status Colors
