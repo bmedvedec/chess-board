@@ -244,19 +244,48 @@ class MoveHistoryPanel:
                 self.line_height,
             )
 
+            # Define sub-rects for half-move highlights
+            pair_highlight_color = (70, 85, 80)
+            specific_highlight_color = (40, 120, 80)
+            move_num_width = 45
+            white_start_x = self.rect.x + self.padding + move_num_width
+            white_width = 80
+            black_start_x = self.rect.x + self.padding + 130
+            black_width = 80
+            white_rect = pygame.Rect(
+                white_start_x, y_offset - 2, white_width, self.line_height
+            )
+            black_rect = pygame.Rect(
+                black_start_x, y_offset - 2, black_width, self.line_height
+            )
+
             # Check if mouse is hovering over this line
             is_hovering = move_line_rect.collidepoint(mouse_pos)
 
             # Hover highlight
             if is_hovering:
-                pygame.draw.rect(self.screen, (70, 70, 80), move_line_rect)
-                # Track which move(s) are being hovered
-                self.hover_move_index = i * 2
+                # Hover on specific half
+                mouse_x = mouse_pos[0]
+                if mouse_x < white_start_x + white_width:
+                    pygame.draw.rect(self.screen, (70, 70, 80), white_rect)
+                    self.hover_move_index = i * 2
+                else:
+                    pygame.draw.rect(self.screen, (70, 70, 80), black_rect)
+                    if black_move:
+                        self.hover_move_index = i * 2 + 1
+                    else:
+                        self.hover_move_index = None  # No black move
 
             # Draw highlight background if current move
             if is_current:
                 # Draw blue-gray background for current move
-                pygame.draw.rect(self.screen, (80, 80, 100), move_line_rect)
+                pygame.draw.rect(self.screen, pair_highlight_color, move_line_rect)
+
+            # Add darker highlight for exact half-move
+            if current_move_number == i * 2:
+                pygame.draw.rect(self.screen, specific_highlight_color, white_rect)
+            elif current_move_number == i * 2 + 1 and black_move:
+                pygame.draw.rect(self.screen, specific_highlight_color, black_rect)
 
             # Render move number
             move_num_text = f"{move_num:>3}."
@@ -393,7 +422,7 @@ class MoveHistoryPanel:
         # Layout constants (should match drawing code)
         move_number_width = 45  # Width allocated for move number "  1."
         white_move_start = self.rect.x + self.padding + move_number_width
-        white_move_width = 75  # Approximate width of white move column
+        white_move_width = 80  # Approximate width of white move column
 
         # Determine if clicked on white or black move
         if click_x < white_move_start + white_move_width:
@@ -405,6 +434,9 @@ class MoveHistoryPanel:
 
         # Store selected move
         self.selected_move_index = move_index
+
+        pair_index = move_index // 2
+        self.scroll_offset = max(0, pair_index - self.visible_lines // 2)
 
         return move_index
 

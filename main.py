@@ -229,6 +229,7 @@ def reset_game_state(
     board_state,
     input_handler,
     move_history,
+    full_san_history,
     engine_controller,
     move_panel,
     white_clock,
@@ -259,6 +260,7 @@ def reset_game_state(
     input_handler.reset()
     print(f"[DEBUG] move_history: {move_history}")
     move_history.clear()
+    full_san_history.clear()
     current_move_index = -1  # Reset navigation
     engine_controller.cancel_thinking()
     move_panel.scroll_to_top()
@@ -323,6 +325,7 @@ def start_new_game_with_dialogs(
     board_state,
     input_handler,
     move_history,
+    full_san_history,
     engine_controller,
     move_panel,
     white_clock,
@@ -377,6 +380,7 @@ def start_new_game_with_dialogs(
     input_handler.reset()
     print(f"[DEBUG] move_history: {move_history}")
     move_history.clear()
+    full_san_history.clear()
     current_move_index = -1  # Reset navigation
     move_panel.scroll_to_top()
 
@@ -546,6 +550,7 @@ def main():
 
     # Track move history for engine
     move_history = []
+    full_san_history = []  # Parallel list of SAN moves for full history display
     # Track current position in move history for navigation
     current_move_index = -1  # -1 means "at latest position"
 
@@ -616,6 +621,10 @@ def main():
                             board_state = navigate_to_move(
                                 current_move_index, move_history
                             )
+                            pair_index = highlight_index // 2
+                            move_panel.scroll_offset = max(
+                                0, pair_index - move_panel.visible_lines // 2
+                            )  # Centers the line if possible
                             input_handler.board_state = board_state
                             input_handler.reset()
                             print(f"[DEBUG] move_history: {move_history}")
@@ -660,6 +669,10 @@ def main():
                                 board_state = navigate_to_move(
                                     current_move_index, move_history
                                 )
+                                pair_index = highlight_index // 2
+                                move_panel.scroll_offset = max(
+                                    0, pair_index - move_panel.visible_lines // 2
+                                )  # Centers the line if possible
 
                                 # DEBUG: Print resulting board state
                                 print(f"[DEBUG] After navigate_to_move:")
@@ -682,6 +695,10 @@ def main():
                     if move_history:
                         current_move_index = 0
                         board_state = navigate_to_move(0, move_history)
+                        pair_index = highlight_index // 2
+                        move_panel.scroll_offset = max(
+                            0, pair_index - move_panel.visible_lines // 2
+                        )  # Centers the line if possible
                         input_handler.board_state = board_state
                         input_handler.reset()
                         print(f"[DEBUG] move_history: {move_history}")
@@ -692,6 +709,10 @@ def main():
                     if move_history:
                         current_move_index = len(move_history) - 1
                         board_state = navigate_to_move(current_move_index, move_history)
+                        pair_index = highlight_index // 2
+                        move_panel.scroll_offset = max(
+                            0, pair_index - move_panel.visible_lines // 2
+                        )  # Centers the line if possible
                         input_handler.board_state = board_state
                         input_handler.reset()
                         print(f"[DEBUG] move_history: {move_history}")
@@ -730,6 +751,7 @@ def main():
                             board_state,
                             input_handler,
                             move_history,
+                            full_san_history,
                             engine_controller,
                             move_panel,
                             white_clock,
@@ -759,10 +781,12 @@ def main():
                         if move1:
                             if move_history:
                                 move_history.pop()
+                                full_san_history.pop()
                             print(f"[Game] Undid move: {move1.uci()}")
                         if move2:
                             if move_history:
                                 move_history.pop()
+                                full_san_history.pop()
                             print(f"[Game] Undid move: {move2.uci()}")
 
                         current_move_index = -1  # Reset to "at latest"
@@ -897,6 +921,7 @@ def main():
                                 board_state,
                                 input_handler,
                                 move_history,
+                                full_san_history,
                                 engine_controller,
                                 move_panel,
                                 white_clock,
@@ -933,6 +958,9 @@ def main():
                                     new_state = BoardState.from_pgn(pgn_string)
                                     board_state = new_state
                                     move_history = board_state.get_move_history_uci()
+                                    full_san_history = (
+                                        board_state.get_move_history_san()
+                                    )
                                     input_handler.board_state = board_state
                                     move_panel.scroll_to_bottom()
                                     game_ended = False
@@ -965,6 +993,7 @@ def main():
                                     board_state,
                                     input_handler,
                                     move_history,
+                                    full_san_history,
                                     engine_controller,
                                     move_panel,
                                     white_clock,
@@ -1002,6 +1031,10 @@ def main():
                             board_state = navigate_to_move(
                                 clicked_move_idx, move_history
                             )
+                            pair_index = highlight_index // 2
+                            move_panel.scroll_offset = max(
+                                0, pair_index - move_panel.visible_lines // 2
+                            )  # Centers the line if possible
 
                             # Update references
                             input_handler.board_state = board_state
@@ -1072,6 +1105,11 @@ def main():
                                 ):
                                     move_history.append(last_move.uci())
                                     current_move_index = -1
+                                    # Temporarily undo the move to compute SAN
+                                    board_state.board.pop()
+                                    move_san = board_state.board.san(last_move)
+                                    board_state.board.push(last_move)
+                                    full_san_history.append(move_san)
                                     move_panel.scroll_to_bottom()
                                 else:
                                     print(
@@ -1153,6 +1191,7 @@ def main():
                                             board_state,
                                             input_handler,
                                             move_history,
+                                            full_san_history,
                                             engine_controller,
                                             move_panel,
                                             white_clock,
@@ -1225,12 +1264,18 @@ def main():
                             if not move_history or move_history[-1] != move_uci:
                                 move_history.append(move_uci)
                                 current_move_index = -1
+                                # Temporarily undo the move to compute SAN
+                                last_move = board_state.board.pop()
+                                move_san = board_state.board.san(last_move)
+                                board_state.board.push(last_move)
+                                full_san_history.append(move_san)
                                 move_panel.scroll_to_bottom()
                             else:
                                 print(
                                     f"[DEBUG] Prevented duplicate ENGINE move: {move_uci}"
                                 )
                             print(f"[DEBUG] move_history after: {move_history}")
+
                             expected_len = len(move_history)
                             current_move_index = -1  # Reset to "at latest"
                             move_panel.scroll_to_bottom()
@@ -1297,6 +1342,7 @@ def main():
                                             board_state,
                                             input_handler,
                                             move_history,
+                                            full_san_history,
                                             engine_controller,
                                             move_panel,
                                             white_clock,
@@ -1336,6 +1382,13 @@ def main():
                                             ):
                                                 move_history.append(last_move.uci())
                                                 current_move_index = -1
+                                                # Temporarily undo the move to compute SAN
+                                                board_state.board.pop()
+                                                move_san = board_state.board.san(
+                                                    last_move
+                                                )
+                                                board_state.board.push(last_move)
+                                                full_san_history.append(move_san)
                                             else:
                                                 print(
                                                     f"[DEBUG] Prevented duplicate PREMOVE: {last_move.uci()}"
@@ -1433,6 +1486,7 @@ def main():
                                                     board_state,
                                                     input_handler,
                                                     move_history,
+                                                    full_san_history,
                                                     engine_controller,
                                                     move_panel,
                                                     white_clock,
@@ -1505,6 +1559,7 @@ def main():
                             board_state,
                             input_handler,
                             move_history,
+                            full_san_history,
                             engine_controller,
                             move_panel,
                             white_clock,
@@ -1555,6 +1610,7 @@ def main():
                             board_state,
                             input_handler,
                             move_history,
+                            full_san_history,
                             engine_controller,
                             move_panel,
                             white_clock,
@@ -1654,7 +1710,7 @@ def main():
                 else -1
             )
 
-        move_panel.draw(board_state.get_move_history_san(), highlight_index)
+        move_panel.draw(full_san_history, highlight_index)
 
         # Draw game controls
         game_controls.draw()
