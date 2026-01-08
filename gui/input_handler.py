@@ -72,6 +72,12 @@ class InputHandler:
         )
         self.is_premove_mode: bool = False  # True when showing premove selection
 
+        self.arrow_dragging = False
+        self.arrow_start_square: Optional[chess.Square] = None
+        self.user_arrows: List[chess.Move] = (
+            []
+        )  # or a separate Arrow type if you prefer
+
         print("[InputHandler] Initialized successfully with premove support")
 
     def handle_mouse_click(
@@ -880,3 +886,26 @@ class InputHandler:
         # After applying premoves, it's still human's turn for the next premove
         temp.turn = human_color
         return temp
+
+    def start_arrow_drag(self, pos: Tuple[int, int]) -> None:
+        square = self.board_gui.coords_to_square(pos[0], pos[1])
+        if square is None:
+            return
+        self.arrow_dragging = True
+        self.arrow_start_square = square
+
+    def finish_arrow_drag(self, pos: Tuple[int, int]) -> None:
+        if not self.arrow_dragging or self.arrow_start_square is None:
+            return
+
+        to_square = self.board_gui.coords_to_square(pos[0], pos[1])
+        self.arrow_dragging = False
+
+        if to_square is None or to_square == self.arrow_start_square:
+            self.arrow_start_square = None
+            return
+
+        move = chess.Move(self.arrow_start_square, to_square)
+        self.user_arrows.append(move)
+        print(f"[Arrow] Added arrow {move.uci()}")
+        self.arrow_start_square = None

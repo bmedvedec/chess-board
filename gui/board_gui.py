@@ -8,6 +8,7 @@ including board squares, piece images, coordinate labels, highlights, and
 move indicators.
 """
 
+import math
 import pygame
 import chess
 from typing import List, Optional, Tuple
@@ -238,7 +239,11 @@ class BoardGUI:
             text_rect = text.get_rect(center=(x_right, y))
             self.screen.blit(text, text_rect)
 
-    def draw_pieces(self, board: chess.Board):
+    def draw_pieces(
+        self,
+        board: chess.Board,
+        premove_piece_map: Optional[dict[int, chess.Piece]] = None,
+    ) -> None:
         """
         Render all chess pieces on the board according to current position.
 
@@ -251,10 +256,17 @@ class BoardGUI:
         """
         # Iterate through all 64 squares (0 = a1, 63 = h8)
         for square in chess.SQUARES:
-            piece = board.piece_at(square)
-            if piece:
-                # Square is occupied - draw the piece
-                self._draw_piece(piece, square)
+            piece = None
+            if premove_piece_map is not None and square in premove_piece_map:
+                # Use premove visual piece if present
+                piece = premove_piece_map[square]
+            else:
+                piece = board.piece_at(square)
+
+            if piece is None:
+                continue
+
+            self._draw_piece(piece, square)
 
     def _draw_piece(self, piece: chess.Piece, square: chess.Square):
         """
@@ -495,31 +507,84 @@ class BoardGUI:
         self.highlight_square(last_move.to_square, Colors.LAST_MOVE_TO)
 
     def get_square_center(self, square: chess.Square) -> Tuple[int, int]:
-        x, y = self._square_to_coords(square)
-        return x + self.square_size // 2, y + self.square_size // 2
+        row, col = self._square_to_coords(square)
+        x = self.board_x + col * self.square_size + self.square_size // 2
+        y = self.board_y + row * self.square_size + self.square_size // 2
+        return x, y
 
-    def draw_premove_arrows(self, premove_queue: List[chess.Move]):
-        if not premove_queue:
+    def draw_user_arrows(
+        self, arrows: List[chess.Move], alpha: int = 160, color_rgb=(80, 200, 120)
+    ):
+        if not arrows:
             return
-        color = (100, 150, 255, 255)  # Blue for premove arrows
-        width = 8
-        for move in premove_queue:
-            from_x, from_y = self.get_square_center(move.from_square)
-            to_x, to_y = self.get_square_center(move.to_square)
-            pygame.draw.line(self.screen, color, (from_x, from_y), (to_x, to_y), width)
-            # Arrow head
-            dx = to_x - from_x
-            dy = to_y - from_y
-            length = (dx**2 + dy**2) ** 0.5
-            if length == 0:
+
+        # --- square-based scaling ---
+        x1, y1 = self.get_square_center(chess.A1)
+        x2, y2 = self.get_square_center(chess.B1)
+        square_size = abs(x2 - x1)
+
+        shaft_width = square_size * 0.18
+        head_side = square_size * 0.45
+        head_height = head_side * math.sqrt(3) / 2
+        shaft_overlap = head_height * 0.15
+
+        color = (*color_rgb, alpha)
+        arrow_surface = pygame.Surface(self.screen.get_size(), pygame.SRCALPHA)
+
+        for move in arrows:
+            sx, sy = self.get_square_center(move.from_square)
+            ex, ey = self.get_square_center(move.to_square)
+
+            dx = ex - sx
+            dy = ey - sy
+            length = math.hypot(dx, dy)
+            if length < square_size * 0.25:
                 continue
-            ux = dx / length
-            uy = dy / length
-            head_size = 20
-            p1x = to_x - head_size * ux - head_size * 0.5 * uy
-            p1y = to_y - head_size * uy + head_size * 0.5 * ux
-            p2x = to_x - head_size * ux + head_size * 0.5 * uy
-            p2y = to_y - head_size * uy - head_size * 0.5 * ux
-            pygame.draw.polygon(
-                self.screen, color, [(to_x, to_y), (p1x, p1y), (p2x, p2y)]
+
+            angle = math.atan2(dy, dx)
+            cos_a = math.cos(angle)
+            sin_a = math.sin(angle)
+
+            # --- shaft geometry ---
+            shaft_len = length - head_height + shaft_overlap
+
+            half_w = shaft_width / 2
+            perp_x = -sin_a
+            perp_y = cos_a
+
+            # shaft rectangle corners
+            p1 = (sx + perp_x * half_w, sy + perp_y * half_w)
+            p2 = (sx - perp_x * half_w, sy - perp_y * half_w)
+            p3 = (
+                sx + cos_a * shaft_len - perp_x * half_w,
+                sy + sin_a * shaft_len - perp_y * half_w,
             )
+            p4 = (
+                sx + cos_a * shaft_len + perp_x * half_w,
+                sy + sin_a * shaft_len + perp_y * half_w,
+            )
+
+            pygame.draw.polygon(arrow_surface, color, [p1, p2, p3, p4])
+
+            # --- equilateral arrow head ---
+            base_x = ex - cos_a * head_height
+            base_y = ey - sin_a * head_height
+
+            half_side = head_side / 2
+
+            left = (
+                base_x + perp_x * half_side,
+                base_y + perp_y * half_side,
+            )
+            right = (
+                base_x - perp_x * half_side,
+                base_y - perp_y * half_side,
+            )
+
+            pygame.draw.polygon(
+                arrow_surface,
+                color,
+                [(ex, ey), left, right],
+            )
+
+        self.screen.blit(arrow_surface, (0, 0))

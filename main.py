@@ -933,6 +933,10 @@ def main():
                                     event.pos, engine_controller.is_thinking()
                                 )
 
+                elif event.button == 3 and not game_ended:
+                    # Right button: start arrow drag (no engine_thinking needed)
+                    input_handler.start_arrow_drag(event.pos)
+
             # Mouse button up - handle move completion
             elif event.type == pygame.MOUSEBUTTONUP and not game_ended:
                 if event.button == 1:  # Left click release
@@ -1053,6 +1057,9 @@ def main():
                                 engine_thinking = check_engine_turn_and_move(
                                     board_state, engine_controller, move_history
                                 )
+
+                elif event.button == 3:
+                    input_handler.finish_arrow_drag(event.pos)
 
             # Mouse motion - drag handling
             elif event.type == pygame.MOUSEMOTION and not game_ended:
@@ -1467,7 +1474,9 @@ def main():
                 Config.ENABLE_PREMOVE and engine_controller.is_thinking()
             ):
                 input_handler.render_dragged_piece()
-                board_gui.draw_premove_arrows(input_handler.premove_queue)
+
+        # Render user arrows always
+        board_gui.draw_user_arrows(input_handler.user_arrows)
 
         # Draw captured pieces (if enabled)
         if Config.SHOW_CAPTURED_PIECES:
