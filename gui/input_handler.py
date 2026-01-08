@@ -11,6 +11,8 @@ validates moves, provides visual feedback, and supports premove functionality.
 import chess
 from typing import Optional, Tuple, List
 
+import pygame
+
 from gui.board_gui import BoardGUI
 from gui.board_state import BoardState
 from gui.colors import Colors
@@ -77,6 +79,8 @@ class InputHandler:
         self.user_arrows: List[chess.Move] = (
             []
         )  # or a separate Arrow type if you prefer
+
+        self.right_click_moved = False
 
         print("[InputHandler] Initialized successfully with premove support")
 
@@ -633,6 +637,10 @@ class InputHandler:
             pos (Tuple[int, int]): Current mouse cursor position (x, y)
             engine_thinking (bool): True if engine is currently calculating
         """
+        buttons = pygame.mouse.get_pressed()
+        if buttons[2] and self.arrow_dragging:  # right button held
+            self.mark_right_click_moved()
+
         # Check if we should initiate a drag operation
         if self.drag_start_pos is not None and not self.dragging:
             # Calculate Euclidean distance from initial position
@@ -893,6 +901,7 @@ class InputHandler:
             return
         self.arrow_dragging = True
         self.arrow_start_square = square
+        self.right_click_moved = False  # reset movement flag
 
     def finish_arrow_drag(self, pos: Tuple[int, int]) -> None:
         if not self.arrow_dragging or self.arrow_start_square is None:
@@ -909,3 +918,17 @@ class InputHandler:
         self.user_arrows.append(move)
         print(f"[Arrow] Added arrow {move.uci()}")
         self.arrow_start_square = None
+
+    def clear_premoves_and_arrows(self) -> None:
+        """Clear all premoves and user-drawn arrows."""
+        self.premove_queue.clear()
+        self.user_arrows.clear()
+        # Also reset any premove-specific internal state
+        self.virtual_board = None
+        self.is_premove_mode = False
+        self.selected_square = None
+        self.selected_piece = None
+        self.legal_moves_from_selected = []
+
+    def mark_right_click_moved(self):
+        self.right_click_moved = True

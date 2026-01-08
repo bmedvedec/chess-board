@@ -934,7 +934,7 @@ def main():
                                 )
 
                 elif event.button == 3 and not game_ended:
-                    # Right button: start arrow drag (no engine_thinking needed)
+                    # Start potential arrow drag (if on board)
                     input_handler.start_arrow_drag(event.pos)
 
             # Mouse button up - handle move completion
@@ -1059,7 +1059,12 @@ def main():
                                 )
 
                 elif event.button == 3:
-                    input_handler.finish_arrow_drag(event.pos)
+                    # Try to finish arrow drag
+                    arrow_created = input_handler.finish_arrow_drag(event.pos)
+
+                    # If no arrow was created and there was no drag movement -> treat as clear-click
+                    if not arrow_created and not input_handler.right_click_moved:
+                        input_handler.clear_premoves_and_arrows()
 
             # Mouse motion - drag handling
             elif event.type == pygame.MOUSEMOTION and not game_ended:
