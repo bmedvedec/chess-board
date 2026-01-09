@@ -1,0 +1,29 @@
+# Chess GUI Application - Requirements
+# Python 3.8+ recommended
+
+# Core Dependencies
+pygame>=2.5.0           # GUI rendering, event handling, and display
+python-chess>=1.999     # Chess logic, move validation, and board state
+numpy>=1.24.0           # Array operations for neural network inference
+
+# Optional ML Dependencies (for custom engine)
+torch>=2.0.0          # PyTorch for neural network models
+tensorflow>=2.12.0    # TensorFlow alternative for neural network models
+
+# File I/O and System
+Pillow>=10.0.0          # Image processing for piece graphics (PNG support)
+
+# Standard Library (included with Python, listed for reference)
+# - tkinter             # File dialogs (built-in on most systems)
+# - threading           # Engine threading (built-in)
+# - os                  # File system operations (built-in)
+# - sys                 # System operations (built-in)
+# - typing              # Type hints (built-in Python 3.5+)
+# - datetime            # Date/time handling (built-in)
+# - pathlib             # Path operations (built-in Python 3.4+)
+# - io                  # StringIO for PGN parsing (built-in)
+
+# Development Dependencies (optional)
+pytest>=7.0.0         # Testing framework
+black>=23.0.0         # Code formatting
+mypy>=1.0.0           # Type checking
