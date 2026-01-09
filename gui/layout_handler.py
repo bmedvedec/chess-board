@@ -115,29 +115,63 @@ class LayoutHandler:
         captured_width = int(new_board_size * 0.7)
         clock_width = new_board_size - captured_width - 10
 
-        # Captured pieces - white (above board, left side)
-        setattr(Config, "CAPTURED_PIECES_WHITE_X", Config.BOARD_X)
-        setattr(Config, "CAPTURED_PIECES_WHITE_Y", Config.BOARD_Y - 60)
-        setattr(Config, "CAPTURED_PIECES_WHITE_WIDTH", captured_width)
-        setattr(Config, "CAPTURED_PIECES_WHITE_HEIGHT", 50)
+        # Determine if board is flipped
+        is_flipped = Config.FLIP_BOARD
 
-        # White's clock (below board, right side)
-        setattr(Config, "WHITE_CLOCK_X", Config.BOARD_X + captured_width + 10)
-        setattr(Config, "WHITE_CLOCK_Y", Config.BOARD_Y + new_board_size + 10)
-        setattr(Config, "WHITE_CLOCK_WIDTH", clock_width)
-        setattr(Config, "WHITE_CLOCK_HEIGHT", 50)
+        if is_flipped:
+            # White lost, display under board
+            setattr(Config, "CAPTURED_PIECES_WHITE_X", Config.BOARD_X)
+            setattr(
+                Config, "CAPTURED_PIECES_WHITE_Y", Config.BOARD_Y + new_board_size + 10
+            )
+            setattr(Config, "CAPTURED_PIECES_WHITE_WIDTH", captured_width)
+            setattr(Config, "CAPTURED_PIECES_WHITE_HEIGHT", 50)
 
-        # Captured pieces - black (below board, left side)
-        setattr(Config, "CAPTURED_PIECES_BLACK_X", Config.BOARD_X)
-        setattr(Config, "CAPTURED_PIECES_BLACK_Y", Config.BOARD_Y + new_board_size + 10)
-        setattr(Config, "CAPTURED_PIECES_BLACK_WIDTH", captured_width)
-        setattr(Config, "CAPTURED_PIECES_BLACK_HEIGHT", 50)
+            # Whites clock above board
+            setattr(Config, "WHITE_CLOCK_X", Config.BOARD_X + captured_width + 10)
+            setattr(Config, "WHITE_CLOCK_Y", Config.BOARD_Y - 60)
+            setattr(Config, "WHITE_CLOCK_WIDTH", clock_width)
+            setattr(Config, "WHITE_CLOCK_HEIGHT", 50)
 
-        # Black's clock (above board, right side)
-        setattr(Config, "BLACK_CLOCK_X", Config.BOARD_X + captured_width + 10)
-        setattr(Config, "BLACK_CLOCK_Y", Config.BOARD_Y - 60)
-        setattr(Config, "BLACK_CLOCK_WIDTH", clock_width)
-        setattr(Config, "BLACK_CLOCK_HEIGHT", 50)
+            # Black lost, display above board
+            setattr(Config, "CAPTURED_PIECES_BLACK_X", Config.BOARD_X)
+            setattr(Config, "CAPTURED_PIECES_BLACK_Y", Config.BOARD_Y - 60)
+            setattr(Config, "CAPTURED_PIECES_BLACK_WIDTH", captured_width)
+            setattr(Config, "CAPTURED_PIECES_BLACK_HEIGHT", 50)
+
+            # Blacks clock under board
+            setattr(Config, "BLACK_CLOCK_X", Config.BOARD_X + captured_width + 10)
+            setattr(Config, "BLACK_CLOCK_Y", Config.BOARD_Y + new_board_size + 10)
+            setattr(Config, "BLACK_CLOCK_WIDTH", clock_width)
+            setattr(Config, "BLACK_CLOCK_HEIGHT", 50)
+        else:
+            # Black lost, display under board
+            setattr(Config, "CAPTURED_PIECES_BLACK_X", Config.BOARD_X)
+            setattr(
+                Config,
+                "CAPTURED_PIECES_BLACK_Y",
+                Config.BOARD_Y + new_board_size + 10,
+            )
+            setattr(Config, "CAPTURED_PIECES_BLACK_WIDTH", captured_width)
+            setattr(Config, "CAPTURED_PIECES_BLACK_HEIGHT", 50)
+
+            # Whites clock under board
+            setattr(Config, "WHITE_CLOCK_X", Config.BOARD_X + captured_width + 10)
+            setattr(Config, "WHITE_CLOCK_Y", Config.BOARD_Y + new_board_size + 10)
+            setattr(Config, "WHITE_CLOCK_WIDTH", clock_width)
+            setattr(Config, "WHITE_CLOCK_HEIGHT", 50)
+
+            # White lost, display above board
+            setattr(Config, "CAPTURED_PIECES_WHITE_X", Config.BOARD_X)
+            setattr(Config, "CAPTURED_PIECES_WHITE_Y", Config.BOARD_Y - 60)
+            setattr(Config, "CAPTURED_PIECES_WHITE_WIDTH", captured_width)
+            setattr(Config, "CAPTURED_PIECES_WHITE_HEIGHT", 50)
+
+            # Blacks clock above board
+            setattr(Config, "BLACK_CLOCK_X", Config.BOARD_X + captured_width + 10)
+            setattr(Config, "BLACK_CLOCK_Y", Config.BOARD_Y - 60)
+            setattr(Config, "BLACK_CLOCK_WIDTH", clock_width)
+            setattr(Config, "BLACK_CLOCK_HEIGHT", 50)
 
         return True
 

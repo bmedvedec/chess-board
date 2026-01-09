@@ -321,6 +321,58 @@ def show_game_setup_dialogs(screen, time_control_dialog, color_selection_dialog)
     return selected_time_control, selected_color
 
 
+def recreate_clocks_and_captured_display(screen, game_time_control):
+    """
+    Recreate player clocks and captured pieces display with updated positions.
+
+    Args:
+        screen: pygame.Surface for rendering dialogs
+        game_time_control: Time in seconds or None for unlimited
+
+    Returns:
+        tuple: (white_clock, black_clock, captured_display)
+            - white_clock: PlayerClock instance
+            - black_clock: PlayerClock instance
+            - captured_display: CapturedPiecesDisplay instance
+    """
+    # After dialog returns, recreate components with updated positions
+    white_clock = PlayerClock(
+        screen,
+        x=Config.WHITE_CLOCK_X,
+        y=Config.WHITE_CLOCK_Y,
+        width=Config.WHITE_CLOCK_WIDTH,
+        height=Config.WHITE_CLOCK_HEIGHT,
+        player_name="White",
+        player_color=chess.WHITE,
+        time_control=game_time_control,
+    )
+
+    black_clock = PlayerClock(
+        screen,
+        x=Config.BLACK_CLOCK_X,
+        y=Config.BLACK_CLOCK_Y,
+        width=Config.BLACK_CLOCK_WIDTH,
+        height=Config.BLACK_CLOCK_HEIGHT,
+        player_name="Black",
+        player_color=chess.BLACK,
+        time_control=game_time_control,
+    )
+
+    captured_display = CapturedPiecesDisplay(
+        screen,
+        white_x=Config.CAPTURED_PIECES_WHITE_X,
+        white_y=Config.CAPTURED_PIECES_WHITE_Y,
+        white_width=Config.CAPTURED_PIECES_WHITE_WIDTH,
+        white_height=Config.CAPTURED_PIECES_WHITE_HEIGHT,
+        black_x=Config.CAPTURED_PIECES_BLACK_X,
+        black_y=Config.CAPTURED_PIECES_BLACK_Y,
+        black_width=Config.CAPTURED_PIECES_BLACK_WIDTH,
+        black_height=Config.CAPTURED_PIECES_BLACK_HEIGHT,
+    )
+
+    return white_clock, black_clock, captured_display
+
+
 def start_new_game_with_dialogs(
     board_state,
     input_handler,
@@ -335,6 +387,7 @@ def start_new_game_with_dialogs(
     screen,
     time_control_dialog,
     color_selection_dialog,
+    layout_handler,
 ):
     """
     Start a new game by showing setup dialogs and resetting all game state.
@@ -404,7 +457,7 @@ def start_new_game_with_dialogs(
     print(f"    Status: {board_state.get_game_status()}")
 
     # Return updated game state
-    return False, None, new_time_control
+    return False, None, new_time_control, layout_handler
 
 
 def main():
@@ -453,6 +506,10 @@ def main():
     input_handler = InputHandler(board_gui, board_state)
     print("✅ Input handler initialized")
 
+    # Initialize layout handler for window resizing
+    layout_handler = LayoutHandler()
+    print("✅ Layout handler initialized")
+
     result_dialog = GameResultDialog(screen)
     move_panel = MoveHistoryPanel(
         screen,
@@ -475,20 +532,6 @@ def main():
     move_animator = MoveAnimator(board_gui)
     print("✅ Move animator initialized")
 
-    # Initialize captured pieces display
-    captured_display = CapturedPiecesDisplay(
-        screen,
-        white_x=Config.CAPTURED_PIECES_WHITE_X,
-        white_y=Config.CAPTURED_PIECES_WHITE_Y,
-        white_width=Config.CAPTURED_PIECES_WHITE_WIDTH,
-        white_height=Config.CAPTURED_PIECES_WHITE_HEIGHT,
-        black_x=Config.CAPTURED_PIECES_BLACK_X,
-        black_y=Config.CAPTURED_PIECES_BLACK_Y,
-        black_width=Config.CAPTURED_PIECES_BLACK_WIDTH,
-        black_height=Config.CAPTURED_PIECES_BLACK_HEIGHT,
-    )
-    print("✅ Captured pieces display initialized")
-
     # Initialize sound manager
     sound_manager = SoundManager()
     print("✅ Sound manager initialized")
@@ -503,28 +546,14 @@ def main():
     )
     game_time_control = selected_time_control
 
-    # Initialize individual player clocks
-    white_clock = PlayerClock(
-        screen,
-        x=Config.WHITE_CLOCK_X,
-        y=Config.WHITE_CLOCK_Y,
-        width=Config.WHITE_CLOCK_WIDTH,
-        height=Config.WHITE_CLOCK_HEIGHT,
-        player_name="White",
-        player_color=chess.WHITE,
-        time_control=selected_time_control,
+    # Recreate clocks and captured display with correct positions
+    white_clock, black_clock, captured_display = recreate_clocks_and_captured_display(
+        screen, game_time_control
     )
+    print("✅ Player clocks and captured pieces display initialized")
 
-    black_clock = PlayerClock(
-        screen,
-        x=Config.BLACK_CLOCK_X,
-        y=Config.BLACK_CLOCK_Y,
-        width=Config.BLACK_CLOCK_WIDTH,
-        height=Config.BLACK_CLOCK_HEIGHT,
-        player_name="Black",
-        player_color=chess.BLACK,
-        time_control=selected_time_control,
-    )
+    # After color selection, trigger initial layout
+    layout_handler.handle_resize(Config.WINDOW_WIDTH, Config.WINDOW_HEIGHT)
 
     # Start both clocks (paused initially)
     white_clock.start()
@@ -533,16 +562,10 @@ def main():
     white_clock.activate()
     white_clock.resume()
 
-    print("✅ Player clocks initialized")
-
     # Initialize menu and help screens
     settings_menu = SettingsMenu(screen)
     help_screen = HelpScreen(screen)
     print("✅ Menu system initialized")
-
-    # Initialize layout handler for window resizing
-    layout_handler = LayoutHandler()
-    print("✅ Layout handler initialized")
 
     # Initialize the chess engine (AI opponent)
     engine_controller = initialize_engine()  # Uses path from engine_wrapper.py
@@ -746,7 +769,7 @@ def main():
 
                 # R key resets the board to starting position
                 elif event.key == pygame.K_r and not game_ended:
-                    game_ended, last_result, game_time_control = (
+                    game_ended, last_result, game_time_control, _ = (
                         start_new_game_with_dialogs(
                             board_state,
                             input_handler,
@@ -761,8 +784,19 @@ def main():
                             screen,
                             time_control_dialog,
                             color_selection_dialog,
+                            layout_handler,
                         )
                     )
+
+                    white_clock, black_clock, captured_display = (
+                        recreate_clocks_and_captured_display(screen, game_time_control)
+                    )
+
+                    # Recalculate layout based on new FLIP_BOARD setting
+                    layout_handler.handle_resize(
+                        screen.get_width(), screen.get_height()
+                    )
+
                     print("[Action] Board reset")
                     print(f"    Status: {board_state.get_game_status()}")
                     print("\n[Game] New game started")
@@ -818,17 +852,17 @@ def main():
                     icon_size=Config.GAME_CONTROLS_ICON_SIZE,
                     spacing=Config.GAME_CONTROLS_SPACING,
                 )
-                captured_display = CapturedPiecesDisplay(
-                    screen,
-                    white_x=Config.CAPTURED_PIECES_WHITE_X,
-                    white_y=Config.CAPTURED_PIECES_WHITE_Y,
-                    white_width=Config.CAPTURED_PIECES_WHITE_WIDTH,
-                    white_height=Config.CAPTURED_PIECES_WHITE_HEIGHT,
-                    black_x=Config.CAPTURED_PIECES_BLACK_X,
-                    black_y=Config.CAPTURED_PIECES_BLACK_Y,
-                    black_width=Config.CAPTURED_PIECES_BLACK_WIDTH,
-                    black_height=Config.CAPTURED_PIECES_BLACK_HEIGHT,
-                )
+                # captured_display = CapturedPiecesDisplay(
+                #     screen,
+                #     white_x=Config.CAPTURED_PIECES_WHITE_X,
+                #     white_y=Config.CAPTURED_PIECES_WHITE_Y,
+                #     white_width=Config.CAPTURED_PIECES_WHITE_WIDTH,
+                #     white_height=Config.CAPTURED_PIECES_WHITE_HEIGHT,
+                #     black_x=Config.CAPTURED_PIECES_BLACK_X,
+                #     black_y=Config.CAPTURED_PIECES_BLACK_Y,
+                #     black_width=Config.CAPTURED_PIECES_BLACK_WIDTH,
+                #     black_height=Config.CAPTURED_PIECES_BLACK_HEIGHT,
+                # )
 
                 # Recreate player clocks - preserve state from old clocks
                 # Save state before recreating
@@ -851,27 +885,31 @@ def main():
                     white_clock.paused if hasattr(white_clock, "paused") else True
                 )
 
-                white_clock = PlayerClock(
-                    screen,
-                    x=Config.WHITE_CLOCK_X,
-                    y=Config.WHITE_CLOCK_Y,
-                    width=Config.WHITE_CLOCK_WIDTH,
-                    height=Config.WHITE_CLOCK_HEIGHT,
-                    player_name="White",
-                    player_color=chess.WHITE,
-                    time_control=game_time_control,
+                white_clock, black_clock, captured_display = (
+                    recreate_clocks_and_captured_display(screen, game_time_control)
                 )
 
-                black_clock = PlayerClock(
-                    screen,
-                    x=Config.BLACK_CLOCK_X,
-                    y=Config.BLACK_CLOCK_Y,
-                    width=Config.BLACK_CLOCK_WIDTH,
-                    height=Config.BLACK_CLOCK_HEIGHT,
-                    player_name="Black",
-                    player_color=chess.BLACK,
-                    time_control=game_time_control,
-                )
+                # white_clock = PlayerClock(
+                #     screen,
+                #     x=Config.WHITE_CLOCK_X,
+                #     y=Config.WHITE_CLOCK_Y,
+                #     width=Config.WHITE_CLOCK_WIDTH,
+                #     height=Config.WHITE_CLOCK_HEIGHT,
+                #     player_name="White",
+                #     player_color=chess.WHITE,
+                #     time_control=game_time_control,
+                # )
+
+                # black_clock = PlayerClock(
+                #     screen,
+                #     x=Config.BLACK_CLOCK_X,
+                #     y=Config.BLACK_CLOCK_Y,
+                #     width=Config.BLACK_CLOCK_WIDTH,
+                #     height=Config.BLACK_CLOCK_HEIGHT,
+                #     player_name="Black",
+                #     player_color=chess.BLACK,
+                #     time_control=game_time_control,
+                # )
 
                 # Restore clock state
                 if game_time_control is not None:  # Only restore if using time controls
@@ -916,7 +954,7 @@ def main():
                     # Handle New Game button click
                     if button_id == "new_game":
                         print("[Action] New Game button pressed")
-                        game_ended, last_result, game_time_control = (
+                        game_ended, last_result, game_time_control, _ = (
                             start_new_game_with_dialogs(
                                 board_state,
                                 input_handler,
@@ -931,7 +969,19 @@ def main():
                                 screen,
                                 time_control_dialog,
                                 color_selection_dialog,
+                                layout_handler,
                             )
+                        )
+
+                        white_clock, black_clock, captured_display = (
+                            recreate_clocks_and_captured_display(
+                                screen, game_time_control
+                            )
+                        )
+
+                        # Recalculate layout based on new FLIP_BOARD setting
+                        layout_handler.handle_resize(
+                            screen.get_width(), screen.get_height()
                         )
 
                         # Check if engine should move first
@@ -988,7 +1038,7 @@ def main():
                         # Show result dialog
                         choice = result_dialog.show("resignation", winner, "")
                         if choice == "new_game":
-                            game_ended, last_result, game_time_control = (
+                            game_ended, last_result, game_time_control, _ = (
                                 start_new_game_with_dialogs(
                                     board_state,
                                     input_handler,
@@ -1003,8 +1053,21 @@ def main():
                                     screen,
                                     time_control_dialog,
                                     color_selection_dialog,
+                                    layout_handler,
                                 )
                             )
+
+                            white_clock, black_clock, captured_display = (
+                                recreate_clocks_and_captured_display(
+                                    screen, game_time_control
+                                )
+                            )
+
+                            # Recalculate layout based on new FLIP_BOARD setting
+                            layout_handler.handle_resize(
+                                screen.get_width(), screen.get_height()
+                            )
+
                             engine_thinking = check_engine_turn_and_move(
                                 board_state, engine_controller, move_history
                             )
@@ -1186,7 +1249,7 @@ def main():
                                 # Show result dialog
                                 choice = result_dialog.show(result_type, winner, reason)
                                 if choice == "new_game":
-                                    game_ended, last_result, game_time_control = (
+                                    game_ended, last_result, game_time_control, _ = (
                                         start_new_game_with_dialogs(
                                             board_state,
                                             input_handler,
@@ -1201,7 +1264,19 @@ def main():
                                             screen,
                                             time_control_dialog,
                                             color_selection_dialog,
+                                            layout_handler,
                                         )
+                                    )
+
+                                    white_clock, black_clock, captured_display = (
+                                        recreate_clocks_and_captured_display(
+                                            screen, game_time_control
+                                        )
+                                    )
+
+                                    # Recalculate layout based on new FLIP_BOARD setting
+                                    layout_handler.handle_resize(
+                                        screen.get_width(), screen.get_height()
                                     )
 
                                     engine_thinking = check_engine_turn_and_move(
@@ -1337,7 +1412,7 @@ def main():
                                 # Show result dialog
                                 choice = result_dialog.show(result_type, winner, reason)
                                 if choice == "new_game":
-                                    game_ended, last_result, game_time_control = (
+                                    game_ended, last_result, game_time_control, _ = (
                                         start_new_game_with_dialogs(
                                             board_state,
                                             input_handler,
@@ -1352,7 +1427,19 @@ def main():
                                             screen,
                                             time_control_dialog,
                                             color_selection_dialog,
+                                            layout_handler,
                                         )
+                                    )
+
+                                    white_clock, black_clock, captured_display = (
+                                        recreate_clocks_and_captured_display(
+                                            screen, game_time_control
+                                        )
+                                    )
+
+                                    # Recalculate layout based on new FLIP_BOARD setting
+                                    layout_handler.handle_resize(
+                                        screen.get_width(), screen.get_height()
                                     )
 
                                     engine_thinking = check_engine_turn_and_move(
@@ -1482,6 +1569,7 @@ def main():
                                                     game_ended,
                                                     last_result,
                                                     game_time_control,
+                                                    _,
                                                 ) = start_new_game_with_dialogs(
                                                     board_state,
                                                     input_handler,
@@ -1496,6 +1584,21 @@ def main():
                                                     screen,
                                                     time_control_dialog,
                                                     color_selection_dialog,
+                                                    layout_handler,
+                                                )
+
+                                                (
+                                                    white_clock,
+                                                    black_clock,
+                                                    captured_display,
+                                                ) = recreate_clocks_and_captured_display(
+                                                    screen, game_time_control
+                                                )
+
+                                                # Recalculate layout based on new FLIP_BOARD setting
+                                                layout_handler.handle_resize(
+                                                    screen.get_width(),
+                                                    screen.get_height(),
                                                 )
 
                                                 engine_thinking = (
@@ -1554,7 +1657,7 @@ def main():
                     )
 
                 if choice == "new_game":
-                    game_ended, last_result, game_time_control = (
+                    game_ended, last_result, game_time_control, _ = (
                         start_new_game_with_dialogs(
                             board_state,
                             input_handler,
@@ -1569,8 +1672,19 @@ def main():
                             screen,
                             time_control_dialog,
                             color_selection_dialog,
+                            layout_handler,
                         )
                     )
+
+                    white_clock, black_clock, captured_display = (
+                        recreate_clocks_and_captured_display(screen, game_time_control)
+                    )
+
+                    # Recalculate layout based on new FLIP_BOARD setting
+                    layout_handler.handle_resize(
+                        screen.get_width(), screen.get_height()
+                    )
+
                     engine_thinking = check_engine_turn_and_move(
                         board_state, engine_controller, move_history
                     )
@@ -1605,7 +1719,7 @@ def main():
                     )
 
                 if choice == "new_game":
-                    game_ended, last_result, game_time_control = (
+                    game_ended, last_result, game_time_control, _ = (
                         start_new_game_with_dialogs(
                             board_state,
                             input_handler,
@@ -1620,8 +1734,19 @@ def main():
                             screen,
                             time_control_dialog,
                             color_selection_dialog,
+                            layout_handler,
                         )
                     )
+
+                    white_clock, black_clock, captured_display = (
+                        recreate_clocks_and_captured_display(screen, game_time_control)
+                    )
+
+                    # Recalculate layout based on new FLIP_BOARD setting
+                    layout_handler.handle_resize(
+                        screen.get_width(), screen.get_height()
+                    )
+
                     engine_thinking = check_engine_turn_and_move(
                         board_state, engine_controller, move_history
                     )
