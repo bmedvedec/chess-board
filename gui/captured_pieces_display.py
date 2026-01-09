@@ -102,7 +102,7 @@ class CapturedPiecesDisplay:
             white_captured,
             self.white_rect,
             Colors.COORDINATE_TEXT,
-            material_score if material_score < 0 else 0,
+            -material_score if material_score < 0 else 0,
         )
 
         # Draw section for Black's losses (pieces White captured)
