@@ -36,10 +36,15 @@ from gui.layout_handler import LayoutHandler
 from gui.color_selection_dialog import ColorSelectionDialog
 
 from engine.engine_wrapper import (
+    close_engine,
     initialize_engine as init_engine_wrapper,
     is_engine_ready,
 )
 from engine.engine_controller import EngineController
+from utils.config_persistence import load_config_from_file
+
+# Load persisted settings first (before anything else uses Config)
+load_config_from_file()
 
 
 def initialize_pygame():
@@ -91,7 +96,7 @@ def initialize_engine(engine_path=None):
     print("\n[Engine] Initializing inference engine...")
 
     # Initialize engine wrapper
-    success = init_engine_wrapper(engine_path)
+    success = init_engine_wrapper()
 
     if success:
         print("[Engine] ✅ Engine loaded successfully")
@@ -1865,6 +1870,9 @@ def main():
     if engine_controller.is_thinking():
         print("[Cleanup] Cancelling engine thinking...")
         engine_controller.cancel_thinking()
+
+    # Close the engine (handles UCI shutdown)
+    close_engine()
 
     # Properly shut down pygame and release resources
     # Display final game state summary
