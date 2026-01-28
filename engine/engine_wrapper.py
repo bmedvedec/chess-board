@@ -14,16 +14,12 @@ import random
 from typing import Optional, List
 from utils.config import Config
 import chess.engine
+from utils.resource_loader import resource_path
+from dummy_engine import inference_engine
 
 # =============================================================================
 # CONFIGURATION
 # =============================================================================
-
-# Default path to the built-in dummy engine (relative to project root)
-# This will always be used unless a UCI_ENGINE_PATH is provided via Config
-DEFAULT_DUMMY_ENGINE_PATH = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "dummy_engine")
-)
 
 # Name of the Python module to import from the dummy engine project
 # This should be the module filename without .py extension
@@ -47,21 +43,14 @@ class EngineWrapper:
     regardless of the underlying engine implementation.
     """
 
-    def __init__(self, engine_path: Optional[str] = None):
+    def __init__(self):
         """
         Initialize the engine wrapper with configuration.
 
         By default, this wrapper always uses the built-in dummy engine.
         If Config.UCI_ENGINE_PATH is set, it will attempt to load a UCI engine
         instead and fall back to the dummy engine on failure.
-
-        Args:
-            engine_path (Optional[str], optional): Custom path to dummy engine.
-                If None, DEFAULT_DUMMY_ENGINE_PATH is used.
         """
-        # Always default to dummy engine path unless explicitly overridden
-        self.engine_path = engine_path or DEFAULT_DUMMY_ENGINE_PATH
-
         # Module will be imported and stored here by load_engine()
         self.engine_module = None
 
@@ -122,39 +111,14 @@ class EngineWrapper:
         # ------------------------------------------------------------------
         self.mode = "dummy"
 
-        # Verify path exists on filesystem
-        if not os.path.exists(self.engine_path):
-            print(f"[EngineWrapper] ❌ Dummy engine path not found: {self.engine_path}")
-            return False
-
         try:
-            # Add engine directory to Python's module search path
-            if self.engine_path not in sys.path:
-                sys.path.insert(0, self.engine_path)
-                print(f"[EngineWrapper] Added to path: {self.engine_path}")
+            # Statically import the engine module
+            from dummy_engine import inference_engine
 
-            # Dynamically import the engine module
-            self.engine_module = __import__(ENGINE_MODULE_NAME)
-            print(f"[EngineWrapper] ✅ Imported module: {ENGINE_MODULE_NAME}")
+            self.engine_module = inference_engine
+            print(f"[EngineWrapper] ✅ Imported module: inference_engine")
 
-            # Validate the engine provides required interface
-            if not hasattr(self.engine_module, "get_best_move"):
-                print(
-                    "[EngineWrapper] ❌ Engine module missing 'get_best_move' function"
-                )
-                return False
-
-            # Optionally load pre-trained model (for ML engines)
-            if hasattr(self.engine_module, "load_model") and MODEL_FILENAME:
-                model_path = os.path.join(self.engine_path, MODEL_FILENAME)
-
-                if os.path.exists(model_path):
-                    print(f"[EngineWrapper] Loading model from: {model_path}")
-                    self.model = self.engine_module.load_model(model_path)
-                    print("[EngineWrapper] ✅ Model loaded successfully")
-                else:
-                    print(f"[EngineWrapper] ⚠️ Model file not found: {model_path}")
-
+            # No model loading needed for this dummy engine
             self.model_loaded = True
             return True
 
@@ -211,7 +175,6 @@ class EngineWrapper:
                 time_limit=time_limit,
                 search_depth=search_depth,
                 temperature=temperature,
-                model=self.model,
             )
 
             # Validate the returned move is legal
@@ -266,7 +229,7 @@ class EngineWrapper:
 _engine_instance: Optional[EngineWrapper] = None
 
 
-def initialize_engine(engine_path: Optional[str] = None) -> bool:
+def initialize_engine() -> bool:
     """
     Initialize the global chess engine instance (call once at startup).
 
@@ -275,7 +238,7 @@ def initialize_engine(engine_path: Optional[str] = None) -> bool:
     """
     global _engine_instance
 
-    _engine_instance = EngineWrapper(engine_path)
+    _engine_instance = EngineWrapper()
     return _engine_instance.load_engine()
 
 
