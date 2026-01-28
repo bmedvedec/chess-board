@@ -105,9 +105,15 @@ class Config:
     # ===================
     # Engine Settings
     # ===================
-    ENGINE_TIME_LIMIT = 5.0  # Time limit per move in seconds
+    ENGINE_TIME_LIMIT = 5.0  # Seconds per move (0.1-30s slider)
+    ENGINE_MAX_DEPTH = None  # Max ply searched (None=unlimited, or 5-25 slider)
+    ENGINE_SKILL_LEVEL = 10  # Stockfish skill (0=weakest, 20=full strength)
     MCTS_ITERATIONS = 1000  # Number of MCTS simulations per move
     TEMPERATURE = 1.0  # Exploration parameter for move selection
+    USE_UCI_ENGINE = (
+        False  # Toggle to use UCI engine (e.g., Stockfish) instead of dummy
+    )
+    UCI_ENGINE_PATH = ""  # Path to UCI engine executable (e.g., /path/to/stockfish)
 
     # ===================
     # Animation Settings
