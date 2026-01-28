@@ -26,6 +26,7 @@ echo.
 
 pyinstaller ^
   --onefile ^
+  --noconsole ^
   --name %APP_NAME% ^
   --add-data "assets/icons;assets/icons" ^
   --add-data "assets/pieces;assets/pieces" ^
