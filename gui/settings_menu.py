@@ -5,10 +5,16 @@ Provides an in-game modal settings menu for adjusting game configuration options
 in real-time without restarting the application.
 """
 
+from tkinter import font
 import pygame
 from typing import Optional, Tuple
 from gui.colors import Colors
 from utils.config import Config
+import tkinter as tk
+from tkinter import filedialog
+import os
+
+from utils.config_persistence import save_config_to_file
 
 
 class SettingsMenu:
@@ -49,6 +55,33 @@ class SettingsMenu:
 
         # Initialize empty dict
         self.setting_rects = {}
+
+        # Tkinter for file dialogs
+        self._init_tk_root()
+
+        # Browse buttons for file_select types
+        self.browse_buttons = {}
+
+        # Scrolling support
+        self.scroll_offset = 0  # Current scroll position (positive = scrolled down)
+        self.content_height = 0  # Total height of all settings rows
+        self.scroll_speed = 40  # Pixels per scroll event
+        self.scroll_bar_width = 8
+        self.scroll_bar_color = (120, 120, 120)
+        self.scroll_bar_active_color = (180, 180, 180)
+
+    def _init_tk_root(self):
+        """
+        Initialize hidden tkinter root window for file dialogs.
+        """
+        try:
+            self.tk_root = tk.Tk()
+            self.tk_root.withdraw()  # Hide the root window
+            self.tk_root.attributes("-topmost", True)  # Keep dialogs on top
+            print("[SettingsMenu] Tkinter initialized for file dialogs")
+        except Exception as e:
+            print(f"[SettingsMenu] ⚠️ Failed to initialize tkinter: {e}")
+            self.tk_root = None
 
     def _calculate_positions(self):
         """
@@ -147,21 +180,76 @@ class SettingsMenu:
                 "value": Config.SHOW_FPS,
                 "type": "toggle",
             },
+            "use_uci_engine": {
+                "label": "Use UCI Engine (e.g., Stockfish)",
+                "value": Config.USE_UCI_ENGINE,
+                "type": "toggle",
+            },
+            "uci_engine_path": {
+                "label": "UCI Engine Path",
+                "value": Config.UCI_ENGINE_PATH,
+                "type": "file_select",
+            },
+            "engine_time_limit": {
+                "label": "Engine Time Limit (s)",
+                "value": Config.ENGINE_TIME_LIMIT,
+                "type": "slider",
+                "min": 0.1,
+                "max": 30.0,
+            },
+            "engine_skill_level": {
+                "label": "Engine Skill Level",
+                "value": Config.ENGINE_SKILL_LEVEL,
+                "type": "slider",
+                "min": 0,
+                "max": 20,
+            },
+            "engine_max_depth": {
+                "label": "Max Search Depth (0=unlimited)",
+                "value": Config.ENGINE_MAX_DEPTH or 0,
+                "type": "slider",
+                "min": 0,
+                "max": 25,
+            },
         }
 
     def _create_ui_elements(self):
         """
-        Create bounding rectangles for all UI elements.
-
-        Calculates and stores pygame.Rect objects for the close button and all
-        setting items. These rectangles are used for click detection (determining
-        which setting the user clicked) and hover effects (detecting mouse position).
+        Create and position all setting UI elements (labels, toggles, sliders, browse).
         """
-        # Close Button Rectangle
+        self.setting_rects = {}
+        self.browse_buttons = {}  # reset
+
+        base_y = self.menu_y + 90
+        x_label = self.menu_x + 40
+        row_height = 42
+        gap = 6
+
+        ordered_keys = list(self.settings.keys())  # keeps the order from dict
+
+        y = base_y
+        for key in ordered_keys:
+            setting = self.settings[key]
+            rect = pygame.Rect(x_label, y, self.menu_width - 80, row_height)
+            self.setting_rects[key] = rect
+
+            # Special handling for UCI engine path row → add Browse button
+            if key == "uci_engine_path":
+                browse_rect = pygame.Rect(
+                    self.menu_x + self.menu_width - 140,
+                    y + (row_height - 26) // 2,
+                    85,
+                    26,
+                )
+                self.browse_buttons[key] = browse_rect
+
+            y += row_height + gap
+
+        self.content_height = y - base_y + 20
+
+        # Close button (unchanged)
         button_width = 120
         button_height = 40
-
-        # Center button horizontally
         self.close_button = pygame.Rect(
             self.menu_x + (self.menu_width - button_width) // 2,
             self.menu_y + self.menu_height - 60,
@@ -169,31 +257,14 @@ class SettingsMenu:
             button_height,
         )
 
-        # Setting Item Rectangles
-        y_offset = self.menu_y + 80
-
-        # Vertical spacing between settings
-        spacing = 55
-
-        # Create rectangle for each setting
-        # Loop through all 8 settings in order
-        for i, setting_key in enumerate(self.settings.keys()):
-            rect = pygame.Rect(
-                self.menu_x + 40,
-                y_offset + i * spacing,
-                self.menu_width - 80,
-                40,
-            )
-            self.setting_rects[setting_key] = rect
-
     def show(self) -> bool:
         """
         Display the settings menu and handle user interaction (modal).
 
         Blocks the main game loop and enters a self-contained event loop for the
         settings menu. Renders the menu overlay, handles user clicks on toggles
-        and sliders, supports continuous slider dragging, and applies changes to
-        Config in real-time. Returns when user closes the menu.
+        and sliders, supports continuous slider dragging, mouse wheel scrolling,
+        and applies changes to Config in real-time. Returns when user closes the menu.
 
         Returns:
             bool:
@@ -253,14 +324,81 @@ class SettingsMenu:
                 2,
             )
 
-            # -------------------- Render Settings Items --------------------
+            # -------------------- Render Settings Items (Scrollable) --------------------
 
             # Get current mouse position for hover effects
             mouse_pos = pygame.mouse.get_pos()
 
-            # Draw each setting item (toggle or slider)
+            # Clip drawing to content area + enforce right padding
+            content_area = pygame.Rect(
+                self.menu_x + 20,
+                self.menu_y + 90,
+                self.menu_width - 40,
+                self.menu_height - 170,
+            )
+            old_clip = self.screen.get_clip()
+            self.screen.set_clip(content_area)
+
+            # Draw each setting item with scroll offset
             for setting_key, rect in self.setting_rects.items():
-                self._draw_setting_item(setting_key, rect, mouse_pos)
+                # Apply scroll offset to y-position
+                draw_rect = rect.copy()
+                draw_rect.y -= self.scroll_offset
+
+                # Skip if entirely off-screen
+                if (
+                    draw_rect.bottom < content_area.top
+                    or draw_rect.top > content_area.bottom
+                ):
+                    continue
+
+                self._draw_setting_item(setting_key, draw_rect, mouse_pos)
+
+            self.screen.set_clip(old_clip)
+
+            # -------------------- Render Scrollbar if Needed --------------------
+
+            if self.content_height > content_area.height:
+                scrollable_height = content_area.height
+                total_content = self.content_height
+                thumb_height = max(
+                    30, int(scrollable_height * scrollable_height / total_content)
+                )
+                thumb_y = content_area.top + int(
+                    (self.scroll_offset / (total_content - scrollable_height))
+                    * (scrollable_height - thumb_height)
+                )
+
+                # Track background
+                pygame.draw.rect(
+                    self.screen,
+                    (60, 60, 60),
+                    (
+                        self.menu_x + self.menu_width - 20,
+                        content_area.top,
+                        self.scroll_bar_width,
+                        content_area.height,
+                    ),
+                    border_radius=4,
+                )
+
+                # Thumb (hover color if mouse over)
+                thumb_color = (
+                    self.scroll_bar_active_color
+                    if content_area.collidepoint(mouse_pos)
+                    else self.scroll_bar_color
+                )
+                pygame.draw.rect(
+                    self.screen,
+                    thumb_color,
+                    (
+                        self.menu_x + self.menu_width - 20,
+                        thumb_y,
+                        self.scroll_bar_width,
+                        thumb_height,
+                    ),
+                    border_radius=4,
+                )
 
             # -------------------- Render Close Button --------------------
 
@@ -304,42 +442,81 @@ class SettingsMenu:
                     if event.key == pygame.K_ESCAPE or event.key == pygame.K_s:
                         return settings_changed
 
-                # Event: Mouse Click
+                # Event: Mouse Wheel (Scrolling)
+                elif event.type == pygame.MOUSEWHEEL:
+                    # Scroll up (negative y) or down (positive y)
+                    scroll_amount = -event.y * self.scroll_speed  # Negative for up
+                    self.scroll_offset = max(
+                        0,
+                        min(
+                            self.scroll_offset + scroll_amount,
+                            max(0, self.content_height - content_area.height),
+                        ),
+                    )
+
                 elif event.type == pygame.MOUSEBUTTONDOWN:
                     if event.button == 1:  # Left mouse button
                         # Check if close button was clicked
                         if self.close_button.collidepoint(event.pos):
-                            return settings_changed
+                            if settings_changed:
+                                self._apply_settings()
+                                save_config_to_file()
+                                running = False
 
-                        # Check if any setting item was clicked
+                        # ────────────────────────────────────────────────
+                        # NEW: Check Browse button click (UCI engine path)
+                        # ────────────────────────────────────────────────
+                        if "uci_engine_path" in self.browse_buttons:
+                            original_btn_rect = self.browse_buttons["uci_engine_path"]
+                            drawn_btn_rect = original_btn_rect.copy()
+                            drawn_btn_rect.y -= self.scroll_offset
+
+                            if drawn_btn_rect.collidepoint(event.pos):
+                                self._select_engine_file()
+                                settings_changed = True
+                                continue  # skip other setting checks
+
+                        # ────────────────────────────────────────────────
+                        # Existing: Check if any setting item was clicked
+                        # ────────────────────────────────────────────────
                         for setting_key, rect in self.setting_rects.items():
-                            if rect.collidepoint(event.pos):
+                            # Create offset rect for hit detection
+                            offset_rect = rect.copy()
+                            offset_rect.y -= self.scroll_offset
+
+                            if offset_rect.collidepoint(event.pos):
                                 setting = self.settings[setting_key]
 
-                                # Handle slider click
+                                # ───────────────────────────────
+                                # Handle slider click & drag start
+                                # ───────────────────────────────
                                 if setting["type"] == "slider":
-                                    # Enter dragging mode for continuous adjustment
                                     dragging_slider = setting_key
-
-                                    # Update slider value to click position
-                                    self._handle_setting_click(
-                                        setting_key, event.pos, rect
+                                    adjusted_pos = (
+                                        event.pos[0],
+                                        event.pos[1] + self.scroll_offset,
                                     )
-
-                                    # Mark as changed and apply to Config
+                                    self._handle_setting_click(
+                                        setting_key, adjusted_pos, rect
+                                    )
                                     settings_changed = True
                                     self._apply_settings()
+                                    save_config_to_file()
 
+                                # ───────────────────────────────
                                 # Handle toggle click
+                                # ───────────────────────────────
                                 else:
-                                    # Flip toggle state
-                                    self._handle_setting_click(
-                                        setting_key, event.pos, rect
+                                    adjusted_pos = (
+                                        event.pos[0],
+                                        event.pos[1] + self.scroll_offset,
                                     )
-
-                                    # Mark as changed and apply to Config
+                                    self._handle_setting_click(
+                                        setting_key, adjusted_pos, rect
+                                    )
                                     settings_changed = True
                                     self._apply_settings()
+                                    save_config_to_file()
 
                 # Event: Mouse Release
                 elif event.type == pygame.MOUSEBUTTONUP:
@@ -354,66 +531,53 @@ class SettingsMenu:
                         # Get rectangle for the slider being dragged
                         rect = self.setting_rects[dragging_slider]
 
+                        # Adjust mouse pos for scroll offset
+                        adjusted_pos = (event.pos[0], event.pos[1] + self.scroll_offset)
+
                         # Update slider value based on new mouse position
-                        self._handle_setting_click(dragging_slider, event.pos, rect)
+                        self._handle_setting_click(dragging_slider, adjusted_pos, rect)
 
                         # Mark as changed and apply to Config
                         settings_changed = True
                         self._apply_settings()
+                        save_config_to_file()
 
         # Menu closed, return whether any settings were changed
+        if settings_changed:
+            if save_config_to_file():
+                print("[SettingsMenu] Configuration saved successfully.")
+            else:
+                print("[SettingsMenu] Warning: Could not save settings to config.json")
+
         return settings_changed
 
     def _draw_setting_item(
         self, setting_key: str, rect: pygame.Rect, mouse_pos: Tuple[int, int]
     ):
-        """
-        Render a single setting item (label + control).
-
-        Draws the background, label text, and appropriate control (toggle switch
-        or slider) for one setting. Applies hover effect if mouse is over the
-        setting item.
-
-        Args:
-            setting_key: str
-                The key identifying which setting to draw (e.g., "animations")
-            rect: pygame.Rect
-                The bounding rectangle for this setting item
-            mouse_pos: Tuple[int, int]
-                Current mouse position (x, y) for hover detection
-        """
-        # Get setting configuration
         setting = self.settings[setting_key]
-
-        # Check if mouse is hovering over this item
         is_hover = rect.collidepoint(mouse_pos)
 
-        # Draw Background
         bg_color = (60, 60, 60) if is_hover else (50, 50, 50)
         pygame.draw.rect(self.screen, bg_color, rect, border_radius=5)
-
-        # Draw subtle border
         pygame.draw.rect(self.screen, (80, 80, 80), rect, 1, border_radius=5)
 
-        # Draw Label Text
+        # Label
         label = self.label_font.render(setting["label"], True, (220, 220, 220))
-        label_rect = label.get_rect(
-            x=rect.x + 15,
-            centery=rect.centery,
-        )
-        self.screen.blit(label, label_rect)
+        self.screen.blit(label, (rect.x + 15, rect.centery - label.get_height() // 2))
 
-        # Draw Control Widget
+        # Control
         if setting["type"] == "toggle":
-            # Draw toggle switch (on/off)
             self._draw_toggle(rect, setting["value"])
+
         elif setting["type"] == "slider":
-            # Draw slider with handle
             self._draw_slider(rect, setting)
+
+        elif setting["type"] == "file_select":
+            self._draw_file_path(rect, setting, mouse_pos)
 
     def _draw_toggle(self, rect: pygame.Rect, value: bool):
         """
-        Render a toggle switch control.
+        Render a toggle switch control (smaller size).
 
         Args:
             rect: pygame.Rect
@@ -421,8 +585,8 @@ class SettingsMenu:
             value: bool
                 Current toggle state (True = on, False = off)
         """
-        # Toggle Dimensions & Position
-        toggle_width = 50
+        # Toggle Dimensions & Position (smaller)
+        toggle_width = 48
         toggle_height = 24
 
         # Position on right side of parent rect, vertically centered
@@ -449,7 +613,7 @@ class SettingsMenu:
 
     def _draw_slider(self, rect: pygame.Rect, setting: dict):
         """
-        Render a slider control with draggable handle.
+        Render a slider control with draggable handle (smaller size).
 
         Draws a horizontal track with a progress bar filling from left to the
         current value position, a circular draggable handle at the value position,
@@ -464,8 +628,8 @@ class SettingsMenu:
                 - "min": Minimum allowed value
                 - "max": Maximum allowed value
         """
-        # Slider Dimensions & Position
-        slider_width = 150
+        # Slider Dimensions & Position (smaller)
+        slider_width = 140
 
         # Position on right side of parent rect, vertically centered
         slider_x = rect.right - slider_width - 15
@@ -512,6 +676,94 @@ class SettingsMenu:
         )
         self.screen.blit(value_surface, value_rect)
 
+    def _draw_file_path(
+        self, rect: pygame.Rect, setting: dict, mouse_pos: Tuple[int, int]
+    ):
+        """Draw path + Browse button without overlap or overflow"""
+        if "uci_engine_path" not in self.browse_buttons:
+            return
+
+        original_btn_rect = self.browse_buttons["uci_engine_path"]
+        drawn_btn_rect = original_btn_rect.copy()
+        drawn_btn_rect.y -= self.scroll_offset
+
+        # Skip if off-screen
+        content_top = self.menu_y + 90
+        content_bottom = content_top + (self.menu_height - 170)
+        content_right = self.menu_x + self.menu_width - 25
+        if (
+            drawn_btn_rect.bottom < content_top
+            or drawn_btn_rect.top > content_bottom
+            or drawn_btn_rect.right > content_right
+        ):
+            return
+
+        # ── Path text ───────────────────────────────────────────────────────────
+        full_path = setting["value"] or "Not selected"
+
+        # Calculate available space **first** (always needed)
+        label_width = self.label_font.size("UCI Engine Path")[0]
+        label_end_x = rect.x + 15 + label_width + 25  # after label + reasonable gap
+
+        max_path_px = drawn_btn_rect.left - label_end_x - 15  # gap before button
+
+        # Now shorten path
+        if full_path == "Not selected":
+            display_path = "Not selected"
+        else:
+            # Try full path first
+            display_path = full_path
+            if self.label_font.size(display_path)[0] <= max_path_px:
+                pass  # fits → show full
+
+            else:
+                # Keep full filename + as much parent path as possible
+                filename = os.path.basename(full_path)
+                parent_path = os.path.dirname(full_path)
+                parts = parent_path.split(os.sep)
+
+                current_path = filename
+                for part in reversed(parts):
+                    if not part:
+                        continue
+                    test_path = part + os.sep + current_path
+                    test_px = self.label_font.size("..." + test_path)[0]
+
+                    if test_px <= max_path_px:
+                        current_path = test_path
+                    else:
+                        break
+
+                display_path = "..." + current_path
+
+                # Final safety truncation if still too long
+                if self.label_font.size(display_path)[0] > max_path_px:
+                    max_chars = int(max_path_px / 9) - 3
+                    display_path = "..." + display_path[-max_chars:]
+
+        path_surf = self.label_font.render(display_path, True, (180, 180, 180))
+        path_x = label_end_x
+        path_y = rect.centery - path_surf.get_height() // 2
+
+        if path_x < rect.x:
+            path_x = rect.x + 15
+
+        self.screen.blit(path_surf, (path_x, path_y))
+
+        # ── Browse button ───────────────────────────────────────────────────────
+        is_hover = drawn_btn_rect.collidepoint(mouse_pos)
+
+        btn_color = (110, 110, 110) if is_hover else (90, 90, 90)
+        pygame.draw.rect(self.screen, btn_color, drawn_btn_rect, border_radius=5)
+        pygame.draw.rect(
+            self.screen, (140, 140, 140), drawn_btn_rect, 1, border_radius=5
+        )
+
+        btn_text = self.button_font.render("Browse", True, (255, 255, 255))
+        text_x = drawn_btn_rect.centerx - btn_text.get_width() // 2
+        text_y = drawn_btn_rect.centery - btn_text.get_height() // 2
+        self.screen.blit(btn_text, (text_x, text_y))
+
     def _handle_setting_click(
         self, setting_key: str, pos: Tuple[int, int], rect: pygame.Rect
     ):
@@ -540,7 +792,7 @@ class SettingsMenu:
         # Handle Slider Click/Drag
         elif setting["type"] == "slider":
             # Slider dimensions (must match _draw_slider)
-            slider_width = 150
+            slider_width = 140
             slider_x = rect.right - slider_width - 15
 
             # Extract click X coordinate
@@ -552,7 +804,7 @@ class SettingsMenu:
 
             # Normalize to 0.0-1.0 range
             # relative_x=0 → normalized=0.0 (min value)
-            # relative_x=150 → normalized=1.0 (max value)
+            # relative_x=140 → normalized=1.0 (max value)
             normalized = relative_x / slider_width
 
             # Get value range for this slider
@@ -569,6 +821,38 @@ class SettingsMenu:
             else:
                 # Float setting: round to 1 decimal place
                 setting["value"] = round(new_value, 1)
+
+    def _select_engine_file(self):
+        """Open file dialog to select UCI engine executable"""
+        try:
+            root = tk.Tk()
+            root.withdraw()  # Hide the empty Tk window
+            root.attributes("-topmost", True)  # Keep dialog above pygame window
+
+            filepath = filedialog.askopenfilename(
+                title="Select UCI Engine Executable",
+                initialdir=os.path.expanduser("~"),  # Start in home folder
+                filetypes=[
+                    (
+                        "Executables",
+                        "*.exe *.bin *",
+                    ),  # Windows + common engine extensions
+                    ("All files", "*.*"),
+                ],
+            )
+
+            if filepath:  # User selected a file
+                self.settings["uci_engine_path"]["value"] = filepath.strip()
+
+                # Nice UX: auto-enable UCI engine if path is selected and it was off
+                if not self.settings["use_uci_engine"]["value"]:
+                    self.settings["use_uci_engine"]["value"] = True
+
+                # Optional: print for debugging
+                print(f"Selected engine: {filepath}")
+
+        except Exception as e:
+            print(f"Error opening file dialog: {e}")
 
     def _apply_settings(self):
         """
@@ -587,3 +871,16 @@ class SettingsMenu:
         setattr(Config, "SHOW_CAPTURED_PIECES", self.settings["show_captured"]["value"])
         setattr(Config, "ENABLE_PREMOVE", self.settings["enable_premove"]["value"])
         setattr(Config, "SHOW_FPS", self.settings["show_fps"]["value"])
+        setattr(Config, "USE_UCI_ENGINE", self.settings["use_uci_engine"]["value"])
+        setattr(Config, "UCI_ENGINE_PATH", self.settings["uci_engine_path"]["value"])
+        setattr(
+            Config, "ENGINE_TIME_LIMIT", self.settings["engine_time_limit"]["value"]
+        )
+        setattr(
+            Config, "ENGINE_SKILL_LEVEL", self.settings["engine_skill_level"]["value"]
+        )
+        depth_val = self.settings["engine_max_depth"]["value"]
+        setattr(Config, "ENGINE_MAX_DEPTH", depth_val if depth_val > 0 else None)
+        print(
+            "[SettingsMenu] Settings applied. Restart the application for engine changes to take effect."
+        )

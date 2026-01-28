@@ -8,6 +8,7 @@ python-chess library for seamless piece rendering on the chess board.
 
 import pygame
 import chess
+import utils.resource_loader as resource_loader
 
 
 class PieceLoader:
@@ -20,7 +21,7 @@ class PieceLoader:
     piece rendering.
     """
 
-    def __init__(self, piece_dir="assets/piece_images"):
+    def __init__(self, piece_dir="assets/pieces"):
         """
         Initialize the piece loader with asset directory path.
 
@@ -31,7 +32,7 @@ class PieceLoader:
         Args:
             piece_dir: str, optional
                 Path to directory containing piece PNG images
-                Default: "assets/piece_images"
+                Default: "assets/pieces"
                 Expected files: white_pawn.png, black_knight.png, etc.
         """
         # Store asset directory path
@@ -95,7 +96,8 @@ class PieceLoader:
         for symbol, name in self.symbol_to_name.items():
             try:
                 # Construct full path to PNG file
-                path = f"{self.piece_dir}/{name}.png"
+                # path = f"{self.piece_dir}/{name}.png"
+                path = resource_loader.resource_path(f"{self.piece_dir}\\{name}.png")
 
                 # Load PNG image from disk
                 original = pygame.image.load(path).convert_alpha()

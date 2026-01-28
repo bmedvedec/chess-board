@@ -17,6 +17,7 @@ from gui.colors import Colors
 from utils.config import Config
 import tkinter as tk
 from tkinter import filedialog
+import utils.resource_loader as resource_loader
 
 
 class GameControls:
@@ -117,7 +118,10 @@ class GameControls:
                 icon_files.add(button["icon"])
 
         for icon_file in icon_files:
-            icon_path = os.path.join(Config.ICONS_DIR, icon_file)
+            icon_path = resource_loader.resource_path(
+                os.path.join(Config.ICONS_DIR, icon_file)
+            )
+
             try:
                 if os.path.exists(icon_path):
                     # Load icon and scale to button size
